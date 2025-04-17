@@ -101,6 +101,7 @@ ko build thrivemarket.com/template-resolver/cmd/template-resolver
 - Enhanced validation capabilities
 - Support for different Git branches
 - Parameterized templates with default values
+- Support for arbitrary template keys/context (beyond just post-deploy steps)
 
 ## Contributing
 
