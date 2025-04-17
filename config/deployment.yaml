@@ -1,17 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: demoresolver
+  name: template-resolver
   namespace: tekton-pipelines-resolvers
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: demoresolver
+      app: template-resolver
+      resolution.tekton.dev/type: template
   template:
     metadata:
       labels:
-        app: demoresolver
+        app: template-resolver
+        resolution.tekton.dev/type: template
     spec:
       affinity:
         podAntiAffinity:
@@ -19,13 +21,13 @@ spec:
           - podAffinityTerm:
               labelSelector:
                 matchLabels:
-                  app: demoresolver
+                  app: template-resolver
               topologyKey: kubernetes.io/hostname
             weight: 100
       serviceAccountName: tekton-pipelines-resolvers
       containers:
       - name: controller
-        image: ko://example.com/demoresolver/cmd/demoresolver
+        image: kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:53f656470d3cf1f635fa95c7eecbb05444b7be881835b506266b3d6b41ae07a7
         resources:
           requests:
             cpu: 100m
@@ -51,6 +53,8 @@ spec:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
           capabilities:
             drop:
-            - all
+            - ALL
