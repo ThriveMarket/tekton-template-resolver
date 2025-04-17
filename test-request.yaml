@@ -1,0 +1,38 @@
+apiVersion: resolution.tekton.dev/v1beta1
+kind: ResolutionRequest
+metadata:
+  name: test-request
+  labels:
+    resolution.tekton.dev/type: template
+spec:
+  params:
+    - name: repository
+      value: https://gist.github.com/justinabrahms/b26099674af439a2d889853a4c123a52
+    - name: path
+      value: template.yaml
+    - name: post-dev-steps
+      value: |
+        - name: run-integration-tests
+          taskRef:
+            name: integration-test
+          runAfter:
+            - deploy
+          params:
+            - name: test-suite
+              value: smoke
+            - name: app-url
+              value: "https://$(params.app-name).dev.example.com"
+    - name: post-prod-steps
+      value: |
+        - name: verify-deployment
+          taskRef:
+            name: deployment-verification
+          runAfter:
+            - deploy
+          params:
+            - name: timeout
+              value: "300"
+            - name: endpoint
+              value: "/health"
+    - name: environment
+      value: dev
