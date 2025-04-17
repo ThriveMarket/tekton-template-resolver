@@ -1,0 +1,62 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: example-app-deployment
+spec:
+  pipelineRef:
+    resolver: template
+    params:
+      - name: repository
+        value: https://github.com/thrivemarket/template-resolver
+      - name: path
+        value: examples/templates/standard-deploy.yaml
+      - name: post-dev-steps
+        value: |
+          - name: run-integration-tests
+            taskRef:
+              name: integration-test
+            runAfter:
+              - deploy-to-dev
+            params:
+              - name: test-suite
+                value: smoke
+              - name: timeout
+                value: "120"
+      - name: post-prod-steps
+        value: |
+          - name: verify-deployment
+            taskRef:
+              name: deployment-verification
+            runAfter:
+              - deploy-to-prod
+            params:
+              - name: timeout
+                value: "300"
+          - name: notify-security-team
+            taskRef:
+              name: send-email
+            runAfter:
+              - verify-deployment
+            params:
+              - name: recipients
+                value: "security@example.com"
+              - name: subject
+                value: "New production deployment completed"
+  params:
+    - name: app-name
+      value: example-app
+    - name: git-url
+      value: https://github.com/example/example-app
+    - name: image-name
+      value: example.com/example-app:latest
+    - name: environment
+      value: dev
+  workspaces:
+    - name: shared-workspace
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
