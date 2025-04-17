@@ -1,0 +1,51 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: private-repo-example
+spec:
+  pipelineRef:
+    resolver: template
+    params:
+      # SSH URL for private Git repository
+      - name: repository
+        value: git@github.com:your-org/private-pipeline-templates.git
+      - name: path
+        value: templates/advanced-deploy.yaml
+      - name: post-dev-steps
+        value: |
+          - name: run-security-scan
+            taskRef:
+              name: security-scanner
+            runAfter:
+              - deploy-to-dev
+            params:
+              - name: scan-level
+                value: high
+      - name: post-prod-steps
+        value: |
+          - name: verify-compliance
+            taskRef:
+              name: compliance-check
+            runAfter:
+              - deploy-to-prod
+            params:
+              - name: compliance-standards
+                value: "pci,hipaa,soc2"
+  params:
+    - name: app-name
+      value: private-service
+    - name: git-url
+      value: git@github.com:your-org/private-service.git
+    - name: image-name
+      value: registry.example.com/private-service:latest
+    - name: environment
+      value: dev
+  workspaces:
+    - name: shared-workspace
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi

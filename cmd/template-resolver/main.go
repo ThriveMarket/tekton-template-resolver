@@ -208,19 +208,26 @@ func fetchTemplate(repoURL, filePath string) (string, error) {
 		return string(content), nil
 	}
 	
-	// For other Git repositories, we would need to use git commands
-	// This is a simplified example and would need error handling and security considerations
+	// Handle Git repositories (public or private)
+	// If private, the GIT_SSH_COMMAND env var should be set in the deployment 
+	// to use the mounted SSH key
 	tempDir, err := os.MkdirTemp("", "template-resolver-*")
 	if err != nil {
 		return "", err
 	}
 	defer os.RemoveAll(tempDir)
 	
+	// Setup git command with output capturing
 	cmd := exec.Command("git", "clone", "--depth=1", repoURL, tempDir)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	
+	// Attempt to clone the repository
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git clone failed: %w", err)
+		return "", fmt.Errorf("git clone failed: %w, stderr: %s", err, stderr.String())
 	}
 	
+	// Read the requested file from the cloned repo
 	filePath = filepath.Join(tempDir, filePath)
 	content, err := os.ReadFile(filePath)
 	if err != nil {

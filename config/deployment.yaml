@@ -49,11 +49,22 @@ spec:
           value: config-observability
         - name: METRICS_DOMAIN
           value: tekton.dev/resolution
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          seccompProfile:
+        - name: GIT_SSH_COMMAND
+          value: "ssh -i /etc/git-secrets/ssh-privatekey -o StrictHostKeyChecking=no"
+        volumeMounts:
+        - name: git-ssh-key
+          mountPath: /etc/git-secrets
+          readOnly: true
+      volumes:
+      - name: git-ssh-key
+        secret:
+          secretName: git-ssh-key
+          defaultMode: 0400
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        seccompProfile:
             type: RuntimeDefault
           capabilities:
             drop:

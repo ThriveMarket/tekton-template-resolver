@@ -50,11 +50,33 @@ spec:
 
 ## Installation
 
+### Basic Installation
+
 Deploy the Template Resolver to your Kubernetes cluster:
 
 ```bash
 ko apply -f config/
 ```
+
+### Private Git Repository Access
+
+To use templates from private Git repositories, you need to create an SSH deploy key:
+
+1. Generate an SSH key pair for repository access:
+   ```bash
+   ssh-keygen -t ed25519 -f deploy_key -N ""
+   ```
+
+2. Add the public key (`deploy_key.pub`) as a deploy key in your Git repository settings with read-only access.
+
+3. Create a Kubernetes secret with the private key:
+   ```bash
+   kubectl create secret generic git-ssh-key \
+     --namespace tekton-pipelines-resolvers \
+     --from-file=ssh-privatekey=deploy_key
+   ```
+
+4. The deployment automatically mounts this secret and configures Git to use it when cloning repositories.
 
 ## Development
 
@@ -74,10 +96,11 @@ ko build thrivemarket.com/template-resolver/cmd/template-resolver
 
 ## Roadmap
 
-- Support for authenticated Git repositories
 - Template caching for improved performance
 - Additional template sources (S3, OCI)
 - Enhanced validation capabilities
+- Support for different Git branches
+- Parameterized templates with default values
 
 ## Contributing
 

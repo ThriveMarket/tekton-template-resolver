@@ -9,7 +9,8 @@ This directory contains example templates and usage patterns for the Template Re
 
 ## Example Usage
 
-The `usage-example.yaml` file demonstrates how to reference a template in a PipelineRun.
+- `usage-example.yaml` - Demonstrates how to reference a template from a public repository in a PipelineRun.
+- `usage-example-private-repo.yaml` - Shows how to use templates from private Git repositories using SSH URLs.
 
 ## Template Structure
 

@@ -1,0 +1,54 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: deployment-pipeline
+spec:
+  params:
+    - name: app-name
+      type: string
+      description: The name of the application
+    - name: image-name
+      type: string
+      description: The container image name
+    - name: namespace
+      type: string
+      description: The namespace to deploy to
+      default: default
+    - name: environment
+      type: string
+      description: The deployment environment (dev or prod)
+      default: dev
+  tasks:
+    - name: deploy
+      taskRef:
+        name: kubernetes-actions
+      params:
+        - name: script
+          value: |
+            kubectl apply -f k8s/$(params.environment)/deployment.yaml -n $(params.namespace)
+            kubectl rollout status deployment/$(params.app-name) -n $(params.namespace)
+    
+    # Post-dev deployment tasks
+    {{- if and (eq .Environment "dev") .PostDevSteps}}
+    # Start of user-defined post-dev steps
+    {{.PostDevSteps}}
+    # End of user-defined post-dev steps
+    {{- end}}
+    
+    # Post-prod deployment tasks
+    {{- if and (eq .Environment "prod") .PostProdSteps}}
+    # Start of user-defined post-prod steps
+    {{.PostProdSteps}}
+    # End of user-defined post-prod steps
+    {{- end}}
+    
+    - name: notify-slack
+      taskRef:
+        name: slack-notification
+      runAfter:
+        - deploy
+      params:
+        - name: message
+          value: "Deployed $(params.app-name) to $(params.environment)"
+        - name: channel
+          value: "#deployments"
