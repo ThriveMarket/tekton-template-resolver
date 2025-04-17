@@ -38,8 +38,6 @@ spec:
       value: git@github.com:your-org/private-service.git
     - name: image-name
       value: registry.example.com/private-service:latest
-    - name: environment
-      value: dev
   workspaces:
     - name: shared-workspace
       volumeClaimTemplate:

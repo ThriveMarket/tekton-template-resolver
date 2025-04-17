@@ -49,8 +49,6 @@ spec:
       value: https://github.com/example/example-app
     - name: image-name
       value: example.com/example-app:latest
-    - name: environment
-      value: dev
   workspaces:
     - name: shared-workspace
       volumeClaimTemplate:

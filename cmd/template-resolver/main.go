@@ -49,7 +49,6 @@ const (
 	PathParam       = "path"
 	PostDevParam    = "post-dev-steps"
 	PostProdParam   = "post-prod-steps"
-	EnvironmentParam = "environment"
 )
 
 // Validate ensures that the resolution params from a request are as expected.
@@ -75,7 +74,7 @@ func (r *resolver) ValidateParams(ctx context.Context, params []pipelinev1.Param
 // Resolve fetches the template from Git, applies parameters, and returns the rendered template.
 func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (framework.ResolvedResource, error) {
 	// Extract parameters
-	var repository, path, postDevSteps, postProdSteps, environment string
+	var repository, path, postDevSteps, postProdSteps string
 	for _, param := range params {
 		switch param.Name {
 		case RepositoryParam:
@@ -86,14 +85,7 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 			postDevSteps = param.Value.StringVal
 		case PostProdParam:
 			postProdSteps = param.Value.StringVal
-		case EnvironmentParam:
-			environment = param.Value.StringVal
 		}
-	}
-
-	// Default environment to dev if not specified
-	if environment == "" {
-		environment = "dev"
 	}
 
 	// Fetch template from Git repository
@@ -106,7 +98,6 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	templateData := map[string]interface{}{
 		"PostDevSteps":  postDevSteps,
 		"PostProdSteps": postProdSteps,
-		"Environment":   environment,
 	}
 
 	// Render the template

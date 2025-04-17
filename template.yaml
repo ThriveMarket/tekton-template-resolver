@@ -29,14 +29,14 @@ spec:
             kubectl rollout status deployment/$(params.app-name) -n $(params.namespace)
     
     # Post-dev deployment tasks
-    {{- if and (eq .Environment "dev") .PostDevSteps}}
+    {{- if .PostDevSteps}}
     # Start of user-defined post-dev steps
     {{.PostDevSteps}}
     # End of user-defined post-dev steps
     {{- end}}
     
     # Post-prod deployment tasks
-    {{- if and (eq .Environment "prod") .PostProdSteps}}
+    {{- if .PostProdSteps}}
     # Start of user-defined post-prod steps
     {{.PostProdSteps}}
     # End of user-defined post-prod steps
