@@ -5,7 +5,7 @@ This directory contains example templates and usage patterns for the Template Re
 ## Directory Structure
 
 - `templates/` - Contains sample Go templates for pipelines
-  - `standard-deploy.yaml` - A standard deployment template with customizable post-deploy steps
+  - `simple.yaml` - A simple deployment template with echo tasks for testing
 
 ## Example Usage
 

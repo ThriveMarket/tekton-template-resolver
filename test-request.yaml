@@ -7,9 +7,9 @@ metadata:
 spec:
   params:
     - name: repository
-      value: https://gist.github.com/justinabrahms/01c8cd517c9d42097735fa58d78e6fc7
+      value: https://gist.github.com/justinabrahms/dfddf710d7884f997f0b648a07d7619c
     - name: path
-      value: simple-template.yaml
+      value: simple.yaml
     - name: post-dev-steps
       value: |
         - name: run-integration-tests

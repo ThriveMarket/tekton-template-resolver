@@ -10,14 +10,14 @@ spec:
       - name: repository
         value: git@github.com:your-org/private-pipeline-templates.git
       - name: path
-        value: templates/advanced-deploy.yaml
+        value: templates/simple.yaml
       - name: post-dev-steps
         value: |
           - name: run-security-scan
             taskRef:
               name: security-scanner
             runAfter:
-              - deploy-to-dev
+              - simulated-deploy
             params:
               - name: scan-level
                 value: high
@@ -27,7 +27,7 @@ spec:
             taskRef:
               name: compliance-check
             runAfter:
-              - deploy-to-prod
+              - simulated-deploy
             params:
               - name: compliance-standards
                 value: "pci,hipaa,soc2"

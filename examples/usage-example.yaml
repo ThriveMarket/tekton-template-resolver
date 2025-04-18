@@ -9,12 +9,12 @@ spec:
       - name: repository
         value: https://github.com/thrivemarket/template-resolver
       - name: path
-        value: examples/templates/standard-deploy.yaml
+        value: examples/templates/simple.yaml
       - name: post-dev-steps
         value: |
           - name: run-integration-tests
             runAfter:
-              - deploy-to-dev
+              - simulated-deploy
             taskSpec:
               steps:
               - name: echo-test
@@ -29,7 +29,7 @@ spec:
         value: |
           - name: verify-deployment
             runAfter:
-              - deploy-to-prod
+              - simulated-deploy
             taskSpec:
               steps:
               - name: echo-verify
