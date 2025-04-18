@@ -25,7 +25,7 @@ spec:
     # Post-dev deployment tasks
     {{- if .PostDevSteps}}
     # User-defined post-dev steps
-    {{.PostDevSteps}}
+{{.PostDevSteps}}
     {{- else}}
     # Default post-dev step
     - name: default-dev-validation
@@ -42,8 +42,10 @@ spec:
     # Production deployment - depends on successful dev tests
     - name: simulated-prod-deploy
       runAfter:
-        {{- if .PostDevSteps}}
-        - run-integration-tests
+        {{- if .DevTaskNames}}
+        {{- range .DevTaskNames}}
+        - {{.}}
+        {{- end}}
         {{- else}}
         - default-dev-validation
         {{- end}}
@@ -59,7 +61,7 @@ spec:
     # Post-prod deployment tasks
     {{- if .PostProdSteps}}
     # User-defined post-prod steps
-    {{.PostProdSteps}}
+{{.PostProdSteps}}
     {{- else}}
     # Default post-prod step
     - name: default-prod-validation
@@ -76,8 +78,10 @@ spec:
     # Simple notification task
     - name: notify
       runAfter:
-        {{- if .PostProdSteps}}
-        - verify-deployment
+        {{- if .ProdTaskNames}}
+        {{- range .ProdTaskNames}}
+        - {{.}}
+        {{- end}}
         {{- else}}
         - default-prod-validation
         {{- end}}

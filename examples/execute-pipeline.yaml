@@ -15,30 +15,24 @@ spec:
         value: |
           - name: run-integration-tests
             runAfter:
-              - simulated-dev-deploy
+            - simulated-dev-deploy
             taskSpec:
               steps:
               - name: echo-test
                 image: alpine:3.15.1
                 script: |
                   echo "Running integration tests for $(params.app-name)..."
-                  echo "Test suite: smoke"
-                  echo "App URL: https://$(params.app-name).dev.example.com"
-                  echo "Test completed successfully!"
       - name: post-prod-steps
         value: |
           - name: verify-deployment
             runAfter:
-              - simulated-prod-deploy
+            - simulated-prod-deploy
             taskSpec:
               steps:
               - name: echo-verify
                 image: alpine:3.15.1
                 script: |
                   echo "Verifying production deployment of $(params.app-name)..."
-                  echo "Checking endpoint: /health"
-                  echo "Timeout: 300s"
-                  echo "Verification completed successfully!"
   
   # Parameters required by the Pipeline
   params:
