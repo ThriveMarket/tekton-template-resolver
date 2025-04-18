@@ -1,0 +1,29 @@
+# Binary executable
+template-resolver
+
+# Build artifacts
+*.exe
+*.out
+*.test
+*.o
+*.a
+*.so
+
+# Dependency directories
+/vendor/
+/bin/
+/.vscode/
+
+# Temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test files
+*.tmp
+*.temp
+*.log
+
+# Environment variables
+.env
