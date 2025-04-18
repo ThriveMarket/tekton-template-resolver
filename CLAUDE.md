@@ -10,6 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Test specific test: `go test ./path/to/package -run TestName`
 - Lint: `golangci-lint run`
 - Build with race detection: `go build -race ./cmd/template-resolver`
+- Local testing: `./scripts/test-locally.sh`
+- Update template gist: `./scripts/update-gist.sh`
 
 ## Code Style Guidelines
 - Follow standard Go conventions
@@ -23,3 +25,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Use context.Context for request-scoped operations
 - Align with the Tekton pipelines resolver pattern
 - Test files should end with _test.go
+
+## Template Formatting Guidelines
+- Be careful with YAML indentation in templates
+- The Go template rendering doesn't preserve proper YAML indentation
+- Tasks and their properties must be properly indented in the template
+- Use direct pipeline examples for reference
+- Test rendered templates with `kubectl apply --dry-run=client -f <file>` before using
+- Custom steps must have proper indentation for runAfter and taskSpec properties
+- For complex templates, consider using a tool like yq to validate the final YAML
