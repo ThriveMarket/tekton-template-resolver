@@ -12,20 +12,20 @@ spec:
       description: The namespace to deploy to
       default: default
   tasks:
-    # This is a simplified task that just echoes what it would do
-    - name: simulated-deploy
+    # This is a simplified task that just echoes what it would do for dev
+    - name: simulated-dev-deploy
       taskSpec:
         steps:
         - name: echo-deploy
           image: alpine:3.15.1
           script: |
-            echo "Would deploy $(params.app-name) to $(params.namespace)..."
+            echo "Would deploy $(params.app-name) to dev environment in $(params.namespace)..."
             echo "This is just a simulation for testing the template resolver."
     
     # Post-dev deployment tasks
     - name: run-integration-tests
       runAfter:
-        - simulated-deploy
+        - simulated-dev-deploy
       taskSpec:
         steps:
         - name: echo-test
@@ -36,10 +36,23 @@ spec:
             echo "App URL: https://$(params.app-name).dev.example.com"
             echo "Test completed successfully!"
     
+    # Production deployment - depends on successful dev tests
+    - name: simulated-prod-deploy
+      runAfter:
+        - run-integration-tests
+      taskSpec:
+        steps:
+        - name: echo-deploy
+          image: alpine:3.15.1
+          script: |
+            echo "Would deploy $(params.app-name) to production environment in $(params.namespace)..."
+            echo "Note: This only runs after successful dev tests!"
+            echo "This is just a simulation for testing the template resolver."
+    
     # Post-prod deployment tasks
     - name: verify-deployment
       runAfter:
-        - simulated-deploy
+        - simulated-prod-deploy
       taskSpec:
         steps:
         - name: echo-verify
@@ -53,10 +66,11 @@ spec:
     # Simple notification task
     - name: notify
       runAfter:
-        - simulated-deploy
+        - verify-deployment
       taskSpec:
         steps:
         - name: echo-notify
           image: alpine:3.15.1
           script: |
-            echo "Simulated notification: Deployed $(params.app-name) to $(params.namespace)"
+            echo "Simulated notification: Deployed $(params.app-name) to dev and prod environments in $(params.namespace)"
+            echo "All validation steps completed successfully."
