@@ -27,7 +27,7 @@ spec:
       serviceAccountName: tekton-pipelines-resolvers
       containers:
       - name: controller
-        image: kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:abae354bdd719d57396852c708ad0b69e765d2d13adaea93af7515b5b9a947ac
+        image: kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:fef88ce6149254de3989a8b41af42aa921a6accbc71a72383f615f5a533199c7
         resources:
           requests:
             cpu: 100m

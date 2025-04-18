@@ -34,7 +34,7 @@ fi
 
 # Update the gist
 echo "Updating Gist $GIST_ID with content from $TEMPLATE_FILE..."
-gh gist edit "$GIST_ID" -f simple.yaml < "$TEMPLATE_FILE"
+gh gist edit "$GIST_ID" -f simple.yaml "$TEMPLATE_FILE"
 
 echo "Gist updated successfully!"
 echo "URL: https://gist.github.com/justinabrahms/$GIST_ID"
