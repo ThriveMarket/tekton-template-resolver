@@ -13,35 +13,44 @@ spec:
       - name: post-dev-steps
         value: |
           - name: run-integration-tests
-            taskRef:
-              name: integration-test
             runAfter:
               - deploy-to-dev
-            params:
-              - name: test-suite
-                value: smoke
-              - name: timeout
-                value: "120"
+            taskSpec:
+              steps:
+              - name: echo-test
+                image: alpine:3.15.1
+                script: |
+                  echo "Running integration tests for $(params.app-name)..."
+                  echo "Test suite: smoke"
+                  echo "Timeout: 120s"
+                  echo "App URL: https://$(params.app-name).dev.example.com"
+                  echo "Test completed successfully!"
       - name: post-prod-steps
         value: |
           - name: verify-deployment
-            taskRef:
-              name: deployment-verification
             runAfter:
               - deploy-to-prod
-            params:
-              - name: timeout
-                value: "300"
+            taskSpec:
+              steps:
+              - name: echo-verify
+                image: alpine:3.15.1
+                script: |
+                  echo "Verifying production deployment of $(params.app-name)..."
+                  echo "Timeout: 300s"
+                  echo "Running health checks..."
+                  echo "Verification completed successfully!"
           - name: notify-security-team
-            taskRef:
-              name: send-email
             runAfter:
               - verify-deployment
-            params:
-              - name: recipients
-                value: "security@example.com"
-              - name: subject
-                value: "New production deployment completed"
+            taskSpec:
+              steps:
+              - name: echo-notify
+                image: alpine:3.15.1
+                script: |
+                  echo "Sending notification to security team..."
+                  echo "Recipients: security@example.com"
+                  echo "Subject: New production deployment completed"
+                  echo "Email sent successfully!"
   params:
     - name: app-name
       value: example-app

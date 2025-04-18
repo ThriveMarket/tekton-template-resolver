@@ -67,6 +67,16 @@ spec:
     # Start of user-defined post-dev steps
     {{.PostDevSteps}}
     # End of user-defined post-dev steps
+    {{- else}}
+    # Default post-dev steps when none provided
+    - name: default-dev-validation
+      taskSpec:
+        steps:
+        - name: echo
+          image: alpine:3.15.1
+          script: |
+            echo "Running default post-dev validation..."
+            echo "This step runs after dev deployment when no custom steps are provided."
     {{- end}}
     
     - name: deploy-to-prod
@@ -92,6 +102,16 @@ spec:
     # Start of user-defined post-prod steps
     {{.PostProdSteps}}
     # End of user-defined post-prod steps
+    {{- else}}
+    # Default post-prod steps when none provided
+    - name: default-prod-validation
+      taskSpec:
+        steps:
+        - name: echo
+          image: alpine:3.15.1
+          script: |
+            echo "Running default post-prod validation..."
+            echo "This step runs after prod deployment when no custom steps are provided."
     {{- end}}
     
     - name: notify-slack

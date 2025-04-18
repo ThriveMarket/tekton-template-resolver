@@ -1,32 +1,26 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: deployment-pipeline
+  name: simple-pipeline
 spec:
   params:
     - name: app-name
       type: string
       description: The name of the application
-    - name: image-name
-      type: string
-      description: The container image name
     - name: namespace
       type: string
       description: The namespace to deploy to
       default: default
-    - name: environment
-      type: string
-      description: The deployment environment (dev or prod)
-      default: dev
   tasks:
-    - name: deploy
-      taskRef:
-        name: kubernetes-actions
-      params:
-        - name: script
-          value: |
-            kubectl apply -f k8s/$(params.environment)/deployment.yaml -n $(params.namespace)
-            kubectl rollout status deployment/$(params.app-name) -n $(params.namespace)
+    # This is a simplified task that just echoes what it would do
+    - name: simulated-deploy
+      taskSpec:
+        steps:
+        - name: echo-deploy
+          image: alpine:3.15.1
+          script: |
+            echo "Would deploy $(params.app-name) to $(params.namespace)..."
+            echo "This is just a simulation for testing the template resolver."
     
     # Post-dev deployment tasks
     {{- if .PostDevSteps}}
@@ -34,10 +28,10 @@ spec:
     {{.PostDevSteps}}
     # End of user-defined post-dev steps
     {{- else}}
-    # Default post-dev steps (simplified inline task)
+    # Default post-dev steps
     - name: default-dev-checks
       runAfter:
-        - deploy
+        - simulated-deploy
       taskSpec:
         steps:
         - name: echo
@@ -53,10 +47,10 @@ spec:
     {{.PostProdSteps}}
     # End of user-defined post-prod steps
     {{- else}}
-    # Default post-prod steps (simplified inline task)
+    # Default post-prod steps
     - name: default-prod-checks
       runAfter:
-        - deploy
+        - simulated-deploy
       taskSpec:
         steps:
         - name: echo
@@ -64,16 +58,15 @@ spec:
           script: |
             echo "Running default post-prod checks for $(params.app-name)..."
             echo "No custom post-prod steps were provided, using defaults."
-            echo "Checking production health at $(params.namespace)/$(params.app-name)..."
     {{- end}}
     
-    - name: notify-slack
-      taskRef:
-        name: slack-notification
+    # Simple notification task
+    - name: notify
       runAfter:
-        - deploy
-      params:
-        - name: message
-          value: "Deployed $(params.app-name) to $(params.environment)"
-        - name: channel
-          value: "#deployments"
+      - simulated-deploy
+      taskSpec:
+        steps:
+        - name: echo-notify
+          image: alpine:3.15.1
+          script: |
+            echo "Simulated notification: Deployed $(params.app-name) to $(params.namespace)"
