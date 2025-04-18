@@ -80,7 +80,7 @@ To use templates from private Git repositories, you need to create an SSH deploy
 
 ## Development
 
-Build and test locally:
+### Build and Test Manually
 
 ```bash
 # Build the resolver
@@ -92,6 +92,18 @@ go test ./...
 # Build and deploy to local kind cluster
 ko build thrivemarket.com/template-resolver/cmd/template-resolver
 # Update deployment.yaml with the resulting image URL
+```
+
+### Helper Scripts
+
+The repository includes helper scripts to simplify common operations:
+
+```bash
+# Test the resolver locally (builds, deploys, and runs a test request)
+./scripts/test-locally.sh
+
+# Update the GitHub Gist with the latest template
+./scripts/update-gist.sh
 ```
 
 ## Roadmap
