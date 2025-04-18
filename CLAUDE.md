@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - kubectl: `brew install kubectl`
 - kind (for local testing): `brew install kind`
 - For kind clusters, set: `export KO_DOCKER_REPO=kind.local`
+- Install Tekton in kind: `kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml`
 
 ## Build Commands
 - Build: `go build ./cmd/template-resolver`

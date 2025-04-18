@@ -97,6 +97,20 @@ export KO_DOCKER_REPO=kind.local
 
 This ensures that container images built with ko are pushed to your local Kind registry.
 
+### Installing Tekton in your Kind cluster
+
+After creating your Kind cluster, you need to install Tekton Pipelines:
+
+```bash
+kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+```
+
+Wait for Tekton to be ready:
+
+```bash
+kubectl wait --for=condition=ready pod -l app=tekton-pipelines-controller -n tekton-pipelines
+```
+
 ### Build and Test Manually
 
 ```bash
