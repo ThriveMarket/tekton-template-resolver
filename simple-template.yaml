@@ -37,8 +37,7 @@ spec:
         - name: echo
           image: alpine:3.15.1
           script: |
-            echo "Running default post-dev checks for $(params.app-name)..."
-            echo "No custom post-dev steps were provided, using defaults."
+            echo "No post-dev validation steps defined. Proceeding."
     {{- end}}
     
     # Post-prod deployment tasks
@@ -56,8 +55,7 @@ spec:
         - name: echo
           image: alpine:3.15.1
           script: |
-            echo "Running default post-prod checks for $(params.app-name)..."
-            echo "No custom post-prod steps were provided, using defaults."
+            echo "No post-prod validation steps defined. Proceeding."
     {{- end}}
     
     # Simple notification task
