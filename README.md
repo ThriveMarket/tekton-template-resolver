@@ -80,6 +80,23 @@ To use templates from private Git repositories, you need to create an SSH deploy
 
 ## Development
 
+### Prerequisites
+
+Before you begin, ensure you have the following tools installed:
+
+- **Go**: Required to build the resolver (`brew install go`)
+- **ko**: Used to build and deploy container images (`brew install ko`)
+- **kubectl**: Required for interacting with Kubernetes clusters (`brew install kubectl`)
+- **Kind** (optional but recommended): For local testing with a Kubernetes cluster (`brew install kind`)
+
+For local development with Kind, set the following environment variable:
+
+```bash
+export KO_DOCKER_REPO=kind.local
+```
+
+This ensures that container images built with ko are pushed to your local Kind registry.
+
 ### Build and Test Manually
 
 ```bash
@@ -92,6 +109,7 @@ go test ./...
 # Build and deploy to local kind cluster
 ko build thrivemarket.com/template-resolver/cmd/template-resolver
 # Update deployment.yaml with the resulting image URL
+kubectl apply -f config/deployment.yaml
 ```
 
 ### Helper Scripts
@@ -104,7 +122,16 @@ The repository includes helper scripts to simplify common operations:
 
 # Update the GitHub Gist with the latest template
 ./scripts/update-gist.sh
+
+# Execute and monitor a test pipeline
+./scripts/run-pipeline.sh
 ```
+
+The `run-pipeline.sh` script simplifies pipeline execution by:
+- Cleaning up any previous pipeline runs
+- Applying the pipeline definition
+- Monitoring the pipeline execution status
+- Displaying detailed information in case of failures
 
 ## Roadmap
 

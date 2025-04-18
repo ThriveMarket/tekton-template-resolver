@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Prerequisites
+- Go: `brew install go`
+- ko: `brew install ko`
+- kubectl: `brew install kubectl`
+- kind (for local testing): `brew install kind`
+- For kind clusters, set: `export KO_DOCKER_REPO=kind.local`
+
 ## Build Commands
 - Build: `go build ./cmd/template-resolver`
 - Run: `go run ./cmd/template-resolver`
@@ -10,8 +17,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Test specific test: `go test ./path/to/package -run TestName`
 - Lint: `golangci-lint run`
 - Build with race detection: `go build -race ./cmd/template-resolver`
+- Build and deploy to kind: `ko build thrivemarket.com/template-resolver/cmd/template-resolver`
 - Local testing: `./scripts/test-locally.sh`
 - Update template gist: `./scripts/update-gist.sh`
+- Run test pipeline: `./scripts/run-pipeline.sh`
 
 ## Code Style Guidelines
 - Follow standard Go conventions
