@@ -1,0 +1,52 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: simple-pipeline-run
+spec:
+  # Reference our template resolver for the Pipeline definition
+  pipelineRef:
+    resolver: template
+    params:
+      - name: repository
+        value: https://gist.github.com/justinabrahms/dfddf710d7884f997f0b648a07d7619c
+      - name: path
+        value: simple.yaml
+      - name: post-dev-steps
+        value: |
+          - name: run-integration-tests
+            runAfter:
+              - simulated-deploy
+            taskSpec:
+              steps:
+              - name: echo-test
+                image: alpine:3.15.1
+                script: |
+                  echo "Running integration tests for $(params.app-name)..."
+                  echo "Test suite: smoke"
+                  echo "App URL: https://$(params.app-name).dev.example.com"
+                  echo "Test completed successfully!"
+      - name: post-prod-steps
+        value: |
+          - name: verify-deployment
+            runAfter:
+              - simulated-deploy
+            taskSpec:
+              steps:
+              - name: echo-verify
+                image: alpine:3.15.1
+                script: |
+                  echo "Verifying production deployment of $(params.app-name)..."
+                  echo "Checking endpoint: /health"
+                  echo "Timeout: 300s"
+                  echo "Verification completed successfully!"
+  
+  # Parameters required by the Pipeline
+  params:
+    - name: app-name
+      value: example-app
+    - name: namespace
+      value: default
+  
+  # Set a reasonable timeout
+  timeouts:
+    pipeline: "10m"

@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: simple-pipeline
+  name: direct-simple-pipeline
 spec:
   params:
     - name: app-name
@@ -23,38 +23,32 @@ spec:
             echo "This is just a simulation for testing the template resolver."
     
     # Post-dev deployment tasks
-    {{- if .PostDevSteps}}
-    # User-defined post-dev steps
-    {{.PostDevSteps}}
-    {{- else}}
-    # Default post-dev step
-    - name: default-dev-validation
+    - name: run-integration-tests
       runAfter:
         - simulated-deploy
       taskSpec:
         steps:
-        - name: echo
+        - name: echo-test
           image: alpine:3.15.1
           script: |
-            echo "No post-dev validation steps defined. Proceeding."
-    {{- end}}
+            echo "Running integration tests for $(params.app-name)..."
+            echo "Test suite: smoke"
+            echo "App URL: https://$(params.app-name).dev.example.com"
+            echo "Test completed successfully!"
     
     # Post-prod deployment tasks
-    {{- if .PostProdSteps}}
-    # User-defined post-prod steps
-    {{.PostProdSteps}}
-    {{- else}}
-    # Default post-prod step
-    - name: default-prod-validation
+    - name: verify-deployment
       runAfter:
         - simulated-deploy
       taskSpec:
         steps:
-        - name: echo
+        - name: echo-verify
           image: alpine:3.15.1
           script: |
-            echo "No post-prod validation steps defined. Proceeding."
-    {{- end}}
+            echo "Verifying production deployment of $(params.app-name)..."
+            echo "Checking endpoint: /health"
+            echo "Timeout: 300s"
+            echo "Verification completed successfully!"
     
     # Simple notification task
     - name: notify
