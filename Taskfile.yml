@@ -186,3 +186,168 @@ tasks:
     desc: Create a snapshot release with goreleaser
     cmds:
       - goreleaser release --snapshot --rm-dist
+      
+  update:
+    desc: Update GitHub Gist template and deploy to local cluster for testing
+    cmds:
+      - |
+        echo "===== Updating GitHub Gist ====="
+        # Configuration
+        GIST_ID="dfddf710d7884f997f0b648a07d7619c"
+        TEMPLATE_FILE="examples/templates/simple.yaml"
+        
+        # Check if template exists
+        if [ ! -f "$TEMPLATE_FILE" ]; then
+          echo "Error: Template file $TEMPLATE_FILE not found"
+          exit 1
+        fi
+        
+        # Check if gh CLI is installed
+        if ! command -v gh &> /dev/null; then
+          echo "Error: GitHub CLI (gh) is not installed or not in PATH"
+          echo "Install from: https://cli.github.com/"
+          exit 1
+        fi
+        
+        # Check if authenticated with GitHub
+        if ! gh auth status &> /dev/null; then
+          echo "Error: Not authenticated with GitHub. Run 'gh auth login' first."
+          exit 1
+        fi
+        
+        # Update the gist
+        echo "Updating Gist $GIST_ID with content from $TEMPLATE_FILE..."
+        gh gist edit "$GIST_ID" -f simple.yaml "$TEMPLATE_FILE"
+        
+        echo "Gist updated successfully!"
+        echo "URL: https://gist.github.com/justinabrahms/$GIST_ID"
+        
+        echo ""
+        echo "===== Testing Locally ====="
+        
+        echo "Building the template resolver..."
+        IMAGE_URL=$(ko build thrivemarket.com/template-resolver/cmd/template-resolver)
+        echo "Built image: $IMAGE_URL"
+        
+        echo "Updating deployment.yaml with the new image..."
+        # Create a temporary file with the updated image
+        TMP_FILE=$(mktemp)
+        cat config/deployment.yaml | awk -v img="$IMAGE_URL" '{
+          if ($1 == "image:") {
+            print "        image: " img;
+          } else {
+            print $0;
+          }
+        }' > $TMP_FILE
+        
+        # Replace the original file with the updated one
+        cp $TMP_FILE config/deployment.yaml
+        rm $TMP_FILE
+        
+        echo "Redeploying the resolver..."
+        kubectl delete deployment template-resolver -n tekton-pipelines-resolvers --ignore-not-found=true
+        kubectl apply -f config/deployment.yaml
+        
+        echo "Waiting for resolver to start..."
+        kubectl wait --for=condition=available deployment/template-resolver -n tekton-pipelines-resolvers --timeout=60s
+        
+        echo "Applying test request..."
+        kubectl delete resolutionrequest test-request --ignore-not-found=true
+        kubectl apply -f test-request.yaml
+        
+        echo "Waiting for resolution..."
+        sleep 5
+        
+        echo "Resolution result:"
+        STATUS=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].status}')
+        REASON=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].reason}')
+        
+        echo "Status: $STATUS"
+        echo "Reason: $REASON"
+        
+        if [ "$STATUS" == "True" ]; then
+          echo "Resolution succeeded!"
+          DATA=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.data}')
+          echo "Decoded template data:"
+          echo $DATA | base64 -d | head -n 20
+          echo "... (truncated)"
+        else
+          echo "Resolution failed. Checking logs..."
+          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}')
+          kubectl logs -n tekton-pipelines-resolvers $RESOLVER_POD --tail=50
+        fi
+        
+        echo ""
+        echo "Update and test process completed!"
+      
+  run:request:
+    desc: Delete, recreate, and inspect a resolution request
+    cmds:
+      - |
+        # Define ResolutionRequest name to inspect
+        PIPELINE_RUN_NAME="example-app-deployment"
+        
+        # Delete any existing PipelineRun with the same name to ensure a fresh start
+        echo "Cleaning up any existing PipelineRun..."
+        kubectl delete pipelinerun $PIPELINE_RUN_NAME --ignore-not-found=true
+        
+        # Wait a moment for resources to be released
+        sleep 2
+        
+        # Apply the new PipelineRun
+        echo "Creating new PipelineRun '$PIPELINE_RUN_NAME'..."
+        kubectl apply -f examples/usage-example.yaml
+        
+        # Wait for resolution request creation
+        echo "Waiting for ResolutionRequest to be created..."
+        sleep 5
+        
+        # Wait a bit longer to ensure ResolutionRequest is created
+        echo "Waiting a bit longer for resources to be processed..."
+        sleep 5
+        
+        # List all ResolutionRequests and get the most recent one
+        echo "Finding the most recent ResolutionRequest..."
+        RESOLUTION_REQUESTS=$(kubectl get resolutionrequest -o name)
+        
+        if [ -z "$RESOLUTION_REQUESTS" ]; then
+          echo "ERROR: No ResolutionRequests found"
+          echo "Checking PipelineRun status:"
+          kubectl describe pipelinerun $PIPELINE_RUN_NAME
+          exit 1
+        fi
+        
+        # Get the most recent ResolutionRequest
+        RESOLUTION_REQUEST=$(kubectl get resolutionrequest --sort-by=.metadata.creationTimestamp -o name | tail -n 1)
+        RESOLUTION_REQUEST=${RESOLUTION_REQUEST#*/}
+        
+        echo "Found ResolutionRequest: $RESOLUTION_REQUEST"
+        
+        # Get status and data from ResolutionRequest
+        STATUS=$(kubectl get resolutionrequest $RESOLUTION_REQUEST -o jsonpath='{.status.conditions[0].status}')
+        REASON=$(kubectl get resolutionrequest $RESOLUTION_REQUEST -o jsonpath='{.status.conditions[0].reason}')
+        MESSAGE=$(kubectl get resolutionrequest $RESOLUTION_REQUEST -o jsonpath='{.status.conditions[0].message}')
+        
+        echo ""
+        echo "Status: $STATUS"
+        echo "Reason: $REASON"
+        echo "Message: $MESSAGE"
+        echo ""
+        
+        # If successful, get and decode the data
+        if [ "$STATUS" == "True" ]; then
+          echo "Resolution succeeded, retrieving data..."
+          DATA=$(kubectl get resolutionrequest $RESOLUTION_REQUEST -o jsonpath='{.status.data}')
+          echo "Decoded resolution data:"
+          echo $DATA | base64 -d
+        else
+          echo "Resolution failed. Checking template-resolver logs for more details..."
+          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}')
+          if [ -n "$RESOLVER_POD" ]; then
+            echo "------------------ TEMPLATE RESOLVER LOGS ------------------"
+            kubectl logs -n tekton-pipelines-resolvers $RESOLVER_POD --tail=50
+            echo "------------------------------------------------------------"
+          else
+            echo "ERROR: Could not find template-resolver pod"
+          fi
+        fi
