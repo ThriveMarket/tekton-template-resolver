@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -20,7 +22,30 @@ import (
 	"knative.dev/pkg/injection/sharedmain"
 )
 
+// Global debug flag
+var debugMode bool
+
+// debugf prints debug messages only when debug mode is enabled
+func debugf(format string, args ...interface{}) {
+	if debugMode {
+		log.Printf(format, args...)
+	}
+}
+
 func main() {
+	// Parse debug flag before sharedmain takes over flag parsing
+	flag.BoolVar(&debugMode, "debug", false, "Enable debug logging")
+	
+	// Parse our flags first
+	flag.Parse()
+	
+	// Reuse flag values for future flag.Parse() calls by setting arguments explicitly
+	os.Args = append([]string{os.Args[0]}, flag.Args()...)
+	
+	if debugMode {
+		log.Println("Debug mode enabled")
+	}
+	
 	sharedmain.Main("controller",
 		framework.NewController(context.Background(), NewResolver()),
 	)
@@ -96,7 +121,7 @@ func (r *resolver) ValidateParams(ctx context.Context, params []pipelinev1.Param
 
 // Resolve fetches the template from Git, applies parameters, and returns the rendered template.
 func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (framework.ResolvedResource, error) {
-	fmt.Printf("DEBUG: Resolve called with %d params\n", len(params))
+	debugf("Resolve called with %d params", len(params))
 	
 	// Extract required parameters
 	var repository, path string
@@ -108,36 +133,36 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	templateData := make(map[string]interface{})
 	
 	for _, param := range params {
-		fmt.Printf("DEBUG: Processing param: %s (type: %s)\n", param.Name, param.Value.Type)
+		debugf("Processing param: %s (type: %s)", param.Name, param.Value.Type)
 		
 		// Set required parameters and continue processing others
 		switch param.Name {
 		case RepositoryParam:
 			repository = param.Value.StringVal
-			fmt.Printf("DEBUG: Repository: %s\n", repository)
+			debugf("Repository: %s", repository)
 			templateData[RepositoryParam] = repository
 			continue
 		case PathParam:
 			path = param.Value.StringVal
-			fmt.Printf("DEBUG: Path: %s\n", path)
+			debugf("Path: %s", path)
 			templateData[PathParam] = path
 			continue
 		case PostDevParam:
 			// Handle both array and string formats for backward compatibility
 			if param.Value.Type == "array" {
-				fmt.Printf("DEBUG: Post-dev steps as array with %d elements\n", len(param.Value.ArrayVal))
+				debugf("Post-dev steps as array with %d elements", len(param.Value.ArrayVal))
 				// Parse each array element as a task
 				for i, arrayItem := range param.Value.ArrayVal {
 					var task map[string]interface{}
 					if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
-						fmt.Printf("Warning: Failed to parse post-dev-steps array item %d: %v\n", i, err)
+						log.Printf("WARNING: Failed to parse post-dev-steps array item %d: %v\n", i, err)
 						continue
 					}
 					postDevStepsTasks = append(postDevStepsTasks, task)
 				}
 			} else if param.Value.Type == "object" {
 				// Handle if it's sent as an object
-				fmt.Printf("DEBUG: Post-dev steps as object (unexpected format)\n")
+				debugf("Post-dev steps as object (unexpected format)\n")
 				taskMap := make(map[string]interface{})
 				for k, v := range param.Value.ObjectVal {
 					taskMap[k] = v
@@ -146,12 +171,12 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 			} else {
 				// Legacy string format
 				postDevSteps := param.Value.StringVal
-				fmt.Printf("DEBUG: Post-dev steps as string: %d bytes\n", len(postDevSteps))
+				debugf("Post-dev steps as string: %d bytes", len(postDevSteps))
 				
 				if postDevSteps != "" {
 					var tasks []map[string]interface{}
 					if err := yaml.Unmarshal([]byte(postDevSteps), &tasks); err != nil {
-						fmt.Printf("Warning: Failed to parse post-dev-steps YAML: %v\n", err)
+						log.Printf("WARNING: Failed to parse post-dev-steps YAML: %v\n", err)
 					} else {
 						postDevStepsTasks = tasks
 					}
@@ -160,19 +185,19 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 		case PostProdParam:
 			// Handle both array and string formats for backward compatibility
 			if param.Value.Type == "array" {
-				fmt.Printf("DEBUG: Post-prod steps as array with %d elements\n", len(param.Value.ArrayVal))
+				debugf("Post-prod steps as array with %d elements", len(param.Value.ArrayVal))
 				// Parse each array element as a task
 				for i, arrayItem := range param.Value.ArrayVal {
 					var task map[string]interface{}
 					if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
-						fmt.Printf("Warning: Failed to parse post-prod-steps array item %d: %v\n", i, err)
+						log.Printf("WARNING: Failed to parse post-prod-steps array item %d: %v\n", i, err)
 						continue
 					}
 					postProdStepsTasks = append(postProdStepsTasks, task)
 				}
 			} else if param.Value.Type == "object" {
 				// Handle if it's sent as an object 
-				fmt.Printf("DEBUG: Post-prod steps as object (unexpected format)\n")
+				debugf("Post-prod steps as object (unexpected format)\n")
 				taskMap := make(map[string]interface{})
 				for k, v := range param.Value.ObjectVal {
 					taskMap[k] = v
@@ -181,12 +206,12 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 			} else {
 				// Legacy string format
 				postProdSteps := param.Value.StringVal
-				fmt.Printf("DEBUG: Post-prod steps as string: %d bytes\n", len(postProdSteps))
+				debugf("Post-prod steps as string: %d bytes", len(postProdSteps))
 				
 				if postProdSteps != "" {
 					var tasks []map[string]interface{}
 					if err := yaml.Unmarshal([]byte(postProdSteps), &tasks); err != nil {
-						fmt.Printf("Warning: Failed to parse post-prod-steps YAML: %v\n", err)
+						log.Printf("WARNING: Failed to parse post-prod-steps YAML: %v\n", err)
 					} else {
 						postProdStepsTasks = tasks
 					}
@@ -234,18 +259,18 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	// Format post-dev steps for pipeline inclusion
 	formattedPostDevSteps := ""
 	if len(postDevStepsTasks) > 0 {
-		fmt.Printf("DEBUG: Formatting %d post-dev steps\n", len(postDevStepsTasks))
+		debugf("Formatting %d post-dev steps", len(postDevStepsTasks))
 		tasksBytes, err := yaml.Marshal(postDevStepsTasks)
 		if err != nil {
-			fmt.Printf("WARNING: Failed to marshal post-dev-steps: %v\n", err)
+			log.Printf("WARNING: Failed to marshal post-dev-steps: %v\n", err)
 		} else {
 			var err error
 			formattedPostDevSteps, err = formatTasksYAML(string(tasksBytes))
 			if err != nil {
 				// Log the error but don't fail - use empty string
-				fmt.Printf("WARNING: Failed to format post-dev-steps: %v\n", err)
+				log.Printf("WARNING: Failed to format post-dev-steps: %v\n", err)
 			} else {
-				fmt.Printf("DEBUG: Formatted post-dev steps: %s\n", formattedPostDevSteps)
+				debugf("Formatted post-dev steps: %s", formattedPostDevSteps)
 			}
 		}
 	}
@@ -253,18 +278,18 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	// Format post-prod steps for pipeline inclusion
 	formattedPostProdSteps := ""
 	if len(postProdStepsTasks) > 0 {
-		fmt.Printf("DEBUG: Formatting %d post-prod steps\n", len(postProdStepsTasks))
+		debugf("Formatting %d post-prod steps", len(postProdStepsTasks))
 		tasksBytes, err := yaml.Marshal(postProdStepsTasks)
 		if err != nil {
-			fmt.Printf("WARNING: Failed to marshal post-prod-steps: %v\n", err)
+			log.Printf("WARNING: Failed to marshal post-prod-steps: %v\n", err)
 		} else {
 			var err error
 			formattedPostProdSteps, err = formatTasksYAML(string(tasksBytes))
 			if err != nil {
 				// Log the error but don't fail - use empty string
-				fmt.Printf("WARNING: Failed to format post-prod-steps: %v\n", err)
+				log.Printf("WARNING: Failed to format post-prod-steps: %v\n", err)
 			} else {
-				fmt.Printf("DEBUG: Formatted post-prod steps: %s\n", formattedPostProdSteps)
+				debugf("Formatted post-prod steps: %s", formattedPostProdSteps)
 			}
 		}
 	}
@@ -299,14 +324,14 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 		// Process based on parameter type
 		switch param.Value.Type {
 		case pipelinev1.ParamTypeArray:
-			fmt.Printf("DEBUG: Processing generic array parameter %s\n", param.Name)
+			debugf("Processing generic array parameter %s", param.Name)
 			
 			// Try to parse each array element as a task definition
 			var tasks []map[string]interface{}
 			for i, arrayItem := range param.Value.ArrayVal {
 				var task map[string]interface{}
 				if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
-					fmt.Printf("Warning: Failed to parse %s array item %d as YAML: %v\n", param.Name, i, err)
+					log.Printf("WARNING: Failed to parse %s array item %d as YAML: %v\n", param.Name, i, err)
 					continue
 				}
 				
@@ -321,14 +346,14 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 				// Format tasks for YAML inclusion
 				tasksBytes, err := yaml.Marshal(tasks)
 				if err != nil {
-					fmt.Printf("WARNING: Failed to marshal %s tasks: %v\n", param.Name, err)
+					log.Printf("WARNING: Failed to marshal %s tasks: %v\n", param.Name, err)
 				} else {
 					formattedTasks, err := formatTasksYAML(string(tasksBytes))
 					if err != nil {
-						fmt.Printf("WARNING: Failed to format %s: %v\n", param.Name, err)
+						log.Printf("WARNING: Failed to format %s: %v\n", param.Name, err)
 					} else {
 						// Add formatted tasks to template data
-						fmt.Printf("DEBUG: Adding generic tasks as %s\n", camelName)
+						debugf("Adding generic tasks as %s", camelName)
 						templateData[camelName] = formattedTasks
 						
 						// Extract task names
@@ -342,7 +367,7 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 						// Add task names to template data
 						if len(taskNames) > 0 {
 							namesParam := camelName + "Names"
-							fmt.Printf("DEBUG: Adding task names as %s\n", namesParam)
+							debugf("Adding task names as %s", namesParam)
 							templateData[namesParam] = taskNames
 						}
 					}
@@ -367,14 +392,14 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 		return nil, fmt.Errorf("failed to render template: %w", err)
 	}
 
-	fmt.Printf("DEBUG: Creating template resource with %d bytes of data\n", len(renderedTemplate))
+	debugf("Creating template resource with %d bytes of data", len(renderedTemplate))
 
 	// Final validation before returning
 	var obj interface{}
 	if err := yaml.Unmarshal([]byte(renderedTemplate), &obj); err != nil {
-		fmt.Printf("DEBUG: Final YAML validation failed: %v\n", err)
+		debugf("Final YAML validation failed: %v", err)
 	} else {
-		fmt.Printf("DEBUG: Final YAML validation passed\n")
+		debugf("Final YAML validation passed\n")
 	}
 
 	return &templateResource{
@@ -501,10 +526,10 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 
 // formatTasksYAML processes the input YAML string to ensure it works correctly in a Pipeline
 func formatTasksYAML(yamlContent string) (string, error) {
-	fmt.Printf("DEBUG: formatTasksYAML input:\n%s\n", yamlContent)
+	debugf("formatTasksYAML input:\n%s", yamlContent)
 
 	if yamlContent == "" {
-		fmt.Printf("DEBUG: Empty YAML content provided\n")
+		debugf("Empty YAML content provided\n")
 		return "", nil
 	}
 
@@ -512,38 +537,38 @@ func formatTasksYAML(yamlContent string) (string, error) {
 	var tasks []map[string]interface{}
 	err := yaml.Unmarshal([]byte(yamlContent), &tasks)
 	if err != nil {
-		fmt.Printf("DEBUG: YAML Unmarshal error: %v\n", err)
+		debugf("YAML Unmarshal error: %v", err)
 		return "", err
 	}
 
 	// If no tasks, return empty string
 	if len(tasks) == 0 {
-		fmt.Printf("DEBUG: No tasks found in YAML\n")
+		debugf("No tasks found in YAML\n")
 		return "", nil
 	}
 
-	fmt.Printf("DEBUG: Found %d tasks\n", len(tasks))
+	debugf("Found %d tasks", len(tasks))
 
 	// Create a new Pipeline tasks section
 	var result strings.Builder
 
 	// Process each task
 	for i, task := range tasks {
-		fmt.Printf("DEBUG: Processing task %d: %v\n", i, task)
+		debugf("Processing task %d: %v", i, task)
 
 		taskBytes, err := yaml.Marshal(task)
 		if err != nil {
-			fmt.Printf("DEBUG: YAML Marshal error for task %d: %v\n", i, err)
+			debugf("YAML Marshal error for task %d: %v", i, err)
 			return "", err
 		}
 
 		// Convert to string and add to result
 		taskStr := string(taskBytes)
-		fmt.Printf("DEBUG: Raw task %d YAML:\n%s\n", i, taskStr)
+		debugf("Raw task %d YAML:\n%s", i, taskStr)
 
 		if !strings.HasPrefix(taskStr, "- ") {
 			taskStr = "- " + strings.TrimPrefix(taskStr, "---\n")
-			fmt.Printf("DEBUG: Fixed task %d prefix\n", i)
+			debugf("Fixed task %d prefix", i)
 		}
 
 		// Properly indent each line of the task YAML
@@ -565,11 +590,11 @@ func formatTasksYAML(yamlContent string) (string, error) {
 
 		// Add the properly indented task to the result
 		result.WriteString(indentedTask.String())
-		fmt.Printf("DEBUG: Added indented task %d\n", i)
+		debugf("Added indented task %d", i)
 	}
 
 	resultStr := result.String()
-	fmt.Printf("DEBUG: formatTasksYAML result:\n%s\n", resultStr)
+	debugf("formatTasksYAML result:\n%s", resultStr)
 	return resultStr, nil
 }
 
@@ -619,38 +644,38 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 		},
 	}
 
-	fmt.Printf("DEBUG: Template content before parsing:\n%s\n", templateContent)
-	fmt.Printf("DEBUG: Template data: %v\n", data)
+	debugf("Template content before parsing:\n%s", templateContent)
+	debugf("Template data: %v", data)
 
 	tmpl, err := template.New("pipeline").Funcs(funcMap).Parse(templateContent)
 	if err != nil {
-		fmt.Printf("DEBUG: Template parsing error: %v\n", err)
+		debugf("Template parsing error: %v", err)
 		return "", err
 	}
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		fmt.Printf("DEBUG: Template execution error: %v\n", err)
+		debugf("Template execution error: %v", err)
 		return "", err
 	}
 
 	result := buf.String()
-	fmt.Printf("DEBUG: Rendered template:\n%s\n", result)
+	debugf("Rendered template:\n%s", result)
 
 	// Validate the resulting YAML
 	var obj interface{}
 	if err := yaml.Unmarshal([]byte(result), &obj); err != nil {
-		fmt.Printf("DEBUG: Generated YAML is invalid: %v\n", err)
+		debugf("Generated YAML is invalid: %v", err)
 		// Try to identify the problematic line
 		lines := strings.Split(result, "\n")
 		for i, line := range lines {
 			var testObj interface{}
 			if err := yaml.Unmarshal([]byte(line), &testObj); err != nil {
-				fmt.Printf("DEBUG: Potential YAML issue at line %d: %s\n", i+1, line)
+				debugf("Potential YAML issue at line %d: %s", i+1, line)
 			}
 		}
 	} else {
-		fmt.Printf("DEBUG: Generated YAML is valid\n")
+		debugf("Generated YAML is valid\n")
 	}
 
 	return result, nil
