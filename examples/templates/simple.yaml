@@ -42,8 +42,8 @@ spec:
     # Production deployment - depends on successful dev tests
     - name: simulated-prod-deploy
       runAfter:
-        {{- if .DevTaskNames}}
-        {{- range .DevTaskNames}}
+        {{- if .PostDevStepsNames}}
+        {{- range .PostDevStepsNames}}
         - {{.}}
         {{- end}}
         {{- else}}
@@ -78,8 +78,8 @@ spec:
     # Simple notification task
     - name: notify
       runAfter:
-        {{- if .ProdTaskNames}}
-        {{- range .ProdTaskNames}}
+        {{- if .PostProdStepsNames}}
+        {{- range .PostProdStepsNames}}
         - {{.}}
         {{- end}}
         {{- else}}
