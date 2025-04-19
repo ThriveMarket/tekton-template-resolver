@@ -23,6 +23,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Update template gist: `./scripts/update-gist.sh`
 - Run test pipeline: `./scripts/run-pipeline.sh`
 
+## Test Coverage
+To generate and view code coverage as an HTML file:
+
+```bash
+# Generate coverage profile
+go test ./... -coverprofile=coverage.out
+
+# Convert to HTML
+go tool cover -html=coverage.out -o coverage.html
+
+# Open in browser (macOS)
+open coverage.html
+
+# Alternative: directly open in browser without saving HTML file
+go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out
+```
+
 ## Code Style Guidelines
 - Follow standard Go conventions
 - Import ordering: standard library, third-party, internal packages

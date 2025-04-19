@@ -175,6 +175,23 @@ ko build thrivemarket.com/template-resolver/cmd/template-resolver
 kubectl apply -f config/deployment.yaml
 ```
 
+### Testing with Coverage
+
+To generate and view test coverage:
+
+```bash
+# Generate coverage profile
+go test ./... -coverprofile=coverage.out
+
+# Convert to HTML
+go tool cover -html=coverage.out -o coverage.html
+
+# Open in browser (macOS)
+open coverage.html
+```
+
+This will create an interactive HTML report highlighting covered and uncovered code in different colors, making it easy to identify areas that need additional tests.
+
 ### Helper Scripts
 
 The repository includes helper scripts to simplify common operations:
