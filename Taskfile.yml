@@ -77,8 +77,19 @@ tasks:
     desc: Run an example pipeline using the template-resolver
     deps: [container:deploy]
     cmds:
-      - kubectl apply -f examples/usage-example.yaml
       - |
+        # Delete any existing PipelineRun with the same name
+        echo "Cleaning up any existing PipelineRun..."
+        kubectl delete pipelinerun example-app-deployment --ignore-not-found=true
+        
+        # Wait a moment for resources to be released
+        sleep 2
+        
+        # Apply the new PipelineRun
+        echo "Creating new PipelineRun..."
+        kubectl apply -f examples/usage-example.yaml
+        
+        # Wait for PipelineRun to start and monitor its progress
         echo "Waiting for PipelineRun to start..."
         sleep 5
         LATEST_RUN=$(kubectl get pipelineruns -o name | tail -1)
@@ -92,12 +103,20 @@ tasks:
     cmds:
       - rm -rf bin/ coverage.out coverage.html
 
-  e2e:test:
+  test:e2e:
     desc: Run end-to-end tests
     deps: [setup:kind, container:deploy]
     cmds:
       - |
+        # Delete any existing PipelineRun with the same name
+        echo "Cleaning up any existing PipelineRun..."
+        kubectl delete pipelinerun example-app-deployment --ignore-not-found=true
+        
+        # Wait a moment for resources to be released
+        sleep 2
+        
         # Apply the test resources
+        echo "Creating test PipelineRun..."
         kubectl apply -f examples/usage-example.yaml
         sleep 5
         
