@@ -1,5 +1,8 @@
 # Tekton Template Resolver
 
+[![CI/CD Pipeline](https://github.com/thrivemarket/template-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/thrivemarket/template-resolver/actions/workflows/ci.yml)
+[![Health Check](https://github.com/thrivemarket/template-resolver/actions/workflows/health-check.yml/badge.svg)](https://github.com/thrivemarket/template-resolver/actions/workflows/health-check.yml)
+
 ## Overview
 
 The Template Resolver extends Tekton's capabilities by enabling teams to use a centralized pipeline template while customizing specific sections with their own tasks. The resolver fetches templates from Git repositories and dynamically renders them with user-provided parameters, providing a flexible and maintainable approach to pipeline definition.
