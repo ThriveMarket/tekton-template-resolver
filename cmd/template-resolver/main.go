@@ -92,11 +92,6 @@ func (r *resolver) GetSelector(context.Context) map[string]string {
 const (
 	RepositoryParam = "repository"
 	PathParam       = "path"
-	
-	// Legacy parameters - kept for backward compatibility
-	// We process all parameters dynamically now, these are just for documentation
-	PostDevParam    = "post-dev-steps"
-	PostProdParam   = "post-prod-steps"
 )
 
 // Validate ensures that the resolution params from a request are as expected.
@@ -126,197 +121,42 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	// Extract required parameters
 	var repository, path string
 	
-	// For backward compatibility
-	var postDevStepsTasks, postProdStepsTasks []map[string]interface{}
-	
 	// Dynamic parameter map to pass to template
 	templateData := make(map[string]interface{})
 	
+	// First, extract required parameters
 	for _, param := range params {
-		debugf("Processing param: %s (type: %s)", param.Name, param.Value.Type)
-		
-		// Set required parameters and continue processing others
-		switch param.Name {
-		case RepositoryParam:
+		if param.Name == RepositoryParam {
 			repository = param.Value.StringVal
 			debugf("Repository: %s", repository)
 			templateData[RepositoryParam] = repository
-			continue
-		case PathParam:
+		} else if param.Name == PathParam {
 			path = param.Value.StringVal
 			debugf("Path: %s", path)
 			templateData[PathParam] = path
-			continue
-		case PostDevParam:
-			// Handle both array and string formats for backward compatibility
-			if param.Value.Type == "array" {
-				debugf("Post-dev steps as array with %d elements", len(param.Value.ArrayVal))
-				// Parse each array element as a task
-				for i, arrayItem := range param.Value.ArrayVal {
-					var task map[string]interface{}
-					if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
-						log.Printf("WARNING: Failed to parse post-dev-steps array item %d: %v\n", i, err)
-						continue
-					}
-					postDevStepsTasks = append(postDevStepsTasks, task)
-				}
-			} else if param.Value.Type == "object" {
-				// Handle if it's sent as an object
-				debugf("Post-dev steps as object (unexpected format)\n")
-				taskMap := make(map[string]interface{})
-				for k, v := range param.Value.ObjectVal {
-					taskMap[k] = v
-				}
-				postDevStepsTasks = append(postDevStepsTasks, taskMap)
-			} else {
-				// Legacy string format
-				postDevSteps := param.Value.StringVal
-				debugf("Post-dev steps as string: %d bytes", len(postDevSteps))
-				
-				if postDevSteps != "" {
-					var tasks []map[string]interface{}
-					if err := yaml.Unmarshal([]byte(postDevSteps), &tasks); err != nil {
-						log.Printf("WARNING: Failed to parse post-dev-steps YAML: %v\n", err)
-					} else {
-						postDevStepsTasks = tasks
-					}
-				}
-			}
-		case PostProdParam:
-			// Handle both array and string formats for backward compatibility
-			if param.Value.Type == "array" {
-				debugf("Post-prod steps as array with %d elements", len(param.Value.ArrayVal))
-				// Parse each array element as a task
-				for i, arrayItem := range param.Value.ArrayVal {
-					var task map[string]interface{}
-					if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
-						log.Printf("WARNING: Failed to parse post-prod-steps array item %d: %v\n", i, err)
-						continue
-					}
-					postProdStepsTasks = append(postProdStepsTasks, task)
-				}
-			} else if param.Value.Type == "object" {
-				// Handle if it's sent as an object 
-				debugf("Post-prod steps as object (unexpected format)\n")
-				taskMap := make(map[string]interface{})
-				for k, v := range param.Value.ObjectVal {
-					taskMap[k] = v
-				}
-				postProdStepsTasks = append(postProdStepsTasks, taskMap)
-			} else {
-				// Legacy string format
-				postProdSteps := param.Value.StringVal
-				debugf("Post-prod steps as string: %d bytes", len(postProdSteps))
-				
-				if postProdSteps != "" {
-					var tasks []map[string]interface{}
-					if err := yaml.Unmarshal([]byte(postProdSteps), &tasks); err != nil {
-						log.Printf("WARNING: Failed to parse post-prod-steps YAML: %v\n", err)
-					} else {
-						postProdStepsTasks = tasks
-					}
-				}
-			}
 		}
 	}
-
+	
 	// Fetch template from Git repository
 	templateContent, err := r.fetcher.FetchTemplate(repository, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch template: %w", err)
 	}
 
-	// Extract task names from post-deploy steps
-	devTaskName := "default-dev-validation"   // Default when no custom steps
-	prodTaskName := "default-prod-validation" // Default when no custom steps
-	var devTaskNames []string
-	var prodTaskNames []string
-
-	// Extract all dev task names from the tasks
-	for _, task := range postDevStepsTasks {
-		if name, ok := task["name"].(string); ok {
-			devTaskNames = append(devTaskNames, name)
-		}
-	}
-
-	// Set the last task name for backward compatibility
-	if len(devTaskNames) > 0 {
-		devTaskName = devTaskNames[len(devTaskNames)-1]
-	}
-
-	// Extract all prod task names from the tasks
-	for _, task := range postProdStepsTasks {
-		if name, ok := task["name"].(string); ok {
-			prodTaskNames = append(prodTaskNames, name)
-		}
-	}
-
-	// Set the last task name for backward compatibility
-	if len(prodTaskNames) > 0 {
-		prodTaskName = prodTaskNames[len(prodTaskNames)-1]
-	}
-
-	// Format post-dev steps for pipeline inclusion
-	formattedPostDevSteps := ""
-	if len(postDevStepsTasks) > 0 {
-		debugf("Formatting %d post-dev steps", len(postDevStepsTasks))
-		tasksBytes, err := yaml.Marshal(postDevStepsTasks)
-		if err != nil {
-			log.Printf("WARNING: Failed to marshal post-dev-steps: %v\n", err)
-		} else {
-			var err error
-			formattedPostDevSteps, err = formatTasksYAML(string(tasksBytes))
-			if err != nil {
-				// Log the error but don't fail - use empty string
-				log.Printf("WARNING: Failed to format post-dev-steps: %v\n", err)
-			} else {
-				debugf("Formatted post-dev steps: %s", formattedPostDevSteps)
-			}
-		}
-	}
-
-	// Format post-prod steps for pipeline inclusion
-	formattedPostProdSteps := ""
-	if len(postProdStepsTasks) > 0 {
-		debugf("Formatting %d post-prod steps", len(postProdStepsTasks))
-		tasksBytes, err := yaml.Marshal(postProdStepsTasks)
-		if err != nil {
-			log.Printf("WARNING: Failed to marshal post-prod-steps: %v\n", err)
-		} else {
-			var err error
-			formattedPostProdSteps, err = formatTasksYAML(string(tasksBytes))
-			if err != nil {
-				// Log the error but don't fail - use empty string
-				log.Printf("WARNING: Failed to format post-prod-steps: %v\n", err)
-			} else {
-				debugf("Formatted post-prod steps: %s", formattedPostProdSteps)
-			}
-		}
-	}
-
-	// Add legacy parameters to the template data
-	camelDevParam := toCamelCase(PostDevParam)
-	camelProdParam := toCamelCase(PostProdParam)
-	
-	templateData[camelDevParam] = formattedPostDevSteps
-	templateData[camelProdParam] = formattedPostProdSteps
-	templateData["DevTaskName"] = devTaskName
-	templateData["ProdTaskName"] = prodTaskName
-	templateData["DevTaskNames"] = devTaskNames
-	templateData["ProdTaskNames"] = prodTaskNames
-	
-	// Process all other parameters not explicitly handled
+	// Process all parameters including the required ones we already set
 	for _, param := range params {
-		// Skip parameters we've already processed
-		if param.Name == RepositoryParam || param.Name == PathParam || 
-		   param.Name == PostDevParam || param.Name == PostProdParam {
-			continue
-		}
+		debugf("Processing param: %s (type: %s)", param.Name, param.Value.Type)
 		
 		// Convert parameter name to camel case for template
 		camelName := toCamelCase(param.Name)
 		
-		// Skip if we've already set this parameter name
+		// Skip parameters we've already set (repository and path)
+		// and skip if we've already processed this parameter name
+		if (param.Name == RepositoryParam || param.Name == PathParam) {
+			continue
+		}
+		
+		// Also skip if we've already set this parameter name through another parameter
 		if _, exists := templateData[camelName]; exists {
 			continue
 		}
@@ -324,14 +164,14 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 		// Process based on parameter type
 		switch param.Value.Type {
 		case pipelinev1.ParamTypeArray:
-			debugf("Processing generic array parameter %s", param.Name)
+			debugf("Processing array parameter %s", param.Name)
 			
 			// Try to parse each array element as a task definition
 			var tasks []map[string]interface{}
 			for i, arrayItem := range param.Value.ArrayVal {
 				var task map[string]interface{}
 				if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
-					log.Printf("WARNING: Failed to parse %s array item %d as YAML: %v\n", param.Name, i, err)
+					log.Printf("WARNING: Failed to parse %s array item %d as YAML: %v", param.Name, i, err)
 					continue
 				}
 				
@@ -346,14 +186,14 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 				// Format tasks for YAML inclusion
 				tasksBytes, err := yaml.Marshal(tasks)
 				if err != nil {
-					log.Printf("WARNING: Failed to marshal %s tasks: %v\n", param.Name, err)
+					log.Printf("WARNING: Failed to marshal %s tasks: %v", param.Name, err)
 				} else {
 					formattedTasks, err := formatTasksYAML(string(tasksBytes))
 					if err != nil {
-						log.Printf("WARNING: Failed to format %s: %v\n", param.Name, err)
+						log.Printf("WARNING: Failed to format %s: %v", param.Name, err)
 					} else {
 						// Add formatted tasks to template data
-						debugf("Adding generic tasks as %s", camelName)
+						debugf("Adding tasks as %s", camelName)
 						templateData[camelName] = formattedTasks
 						
 						// Extract task names
@@ -369,6 +209,12 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 							namesParam := camelName + "Names"
 							debugf("Adding task names as %s", namesParam)
 							templateData[namesParam] = taskNames
+							
+							// Add last task name for convenience
+							lastNameParam := camelName + "Name"
+							lastTaskName := taskNames[len(taskNames)-1]
+							debugf("Adding last task name as %s: %s", lastNameParam, lastTaskName)
+							templateData[lastNameParam] = lastTaskName
 						}
 					}
 				}
@@ -382,7 +228,63 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 			templateData[camelName] = param.Value.ObjectVal
 			
 		default: // String or other type
-			templateData[camelName] = param.Value.StringVal
+			// Try to parse string as YAML tasks if it looks like YAML
+			if param.Value.Type == pipelinev1.ParamTypeString && strings.Contains(param.Value.StringVal, "name:") {
+				paramVal := param.Value.StringVal
+				if paramVal != "" {
+					var tasks []map[string]interface{}
+					if err := yaml.Unmarshal([]byte(paramVal), &tasks); err != nil {
+						// Not valid YAML tasks, treat as a regular string
+						templateData[camelName] = paramVal
+					} else if len(tasks) > 0 {
+						// It parsed as tasks, handle it like array tasks
+						tasksBytes, err := yaml.Marshal(tasks)
+						if err != nil {
+							log.Printf("WARNING: Failed to marshal %s tasks: %v", param.Name, err)
+							templateData[camelName] = paramVal
+						} else {
+							formattedTasks, err := formatTasksYAML(string(tasksBytes))
+							if err != nil {
+								log.Printf("WARNING: Failed to format %s: %v", param.Name, err)
+								templateData[camelName] = paramVal
+							} else {
+								// Add formatted tasks to template data
+								debugf("Adding string tasks as %s", camelName)
+								templateData[camelName] = formattedTasks
+								
+								// Extract task names
+								var taskNames []string
+								for _, task := range tasks {
+									if name, ok := task["name"].(string); ok {
+										taskNames = append(taskNames, name)
+									}
+								}
+								
+								// Add task names to template data
+								if len(taskNames) > 0 {
+									namesParam := camelName + "Names"
+									debugf("Adding task names as %s", namesParam)
+									templateData[namesParam] = taskNames
+									
+									// Add last task name for convenience
+									lastNameParam := camelName + "Name"
+									lastTaskName := taskNames[len(taskNames)-1]
+									debugf("Adding last task name as %s: %s", lastNameParam, lastTaskName)
+									templateData[lastNameParam] = lastTaskName
+								}
+							}
+						}
+					} else {
+						// Empty tasks array, use empty string
+						templateData[camelName] = ""
+					}
+				} else {
+					templateData[camelName] = paramVal
+				}
+			} else {
+				// Regular string parameter
+				templateData[camelName] = param.Value.StringVal
+			}
 		}
 	}
 
@@ -712,39 +614,3 @@ func toCamelCase(paramName string) string {
 	return strings.Join(parts, "")
 }
 
-// Handle backward compatibility for legacy parameter names
-func mapLegacyNames(templateData map[string]interface{}) {
-	// Ensure PostDevSteps and related fields are available
-	if _, exists := templateData["PostDevSteps"]; !exists {
-		templateData["PostDevSteps"] = ""
-	}
-	if _, exists := templateData["PostProdSteps"]; !exists {
-		templateData["PostProdSteps"] = ""
-	}
-	
-	// Default task names if not set
-	if _, exists := templateData["DevTaskNames"]; !exists {
-		templateData["DevTaskNames"] = []string{}
-	}
-	if _, exists := templateData["ProdTaskNames"]; !exists {
-		templateData["ProdTaskNames"] = []string{}
-	}
-	
-	// Backward compatibility for single task name
-	if _, exists := templateData["DevTaskName"]; !exists {
-		devNames, ok := templateData["DevTaskNames"].([]string)
-		if ok && len(devNames) > 0 {
-			templateData["DevTaskName"] = devNames[len(devNames)-1]
-		} else {
-			templateData["DevTaskName"] = "default-dev-validation"
-		}
-	}
-	if _, exists := templateData["ProdTaskName"]; !exists {
-		prodNames, ok := templateData["ProdTaskNames"].([]string)
-		if ok && len(prodNames) > 0 {
-			templateData["ProdTaskName"] = prodNames[len(prodNames)-1]
-		} else {
-			templateData["ProdTaskName"] = "default-prod-validation"
-		}
-	}
-}
