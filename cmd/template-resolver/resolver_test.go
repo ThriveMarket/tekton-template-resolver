@@ -186,43 +186,48 @@ params:
 	assert.Contains(t, renderedData, "- validation-step-2")
 }
 
-// TestResolverLegacyParameters tests the resolver with legacy post-dev-steps and post-prod-steps
-func TestResolverLegacyParameters(t *testing.T) {
-	// Create a mock fetcher with a template that uses legacy parameters
+// TestResolverParameterHandling tests the resolver with various parameter types
+func TestResolverParameterHandling(t *testing.T) {
+	// Create a mock fetcher with a template that uses various parameter types
 	mockData := &mockFetcher{
 		templates: map[string]string{
 			"repo1:path1": `
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: legacy-param-pipeline
+  name: param-handling-pipeline
 spec:
   params:
     - name: app-name
       type: string
   tasks:
-    # Dev task
-    - name: dev-task
+    # Base task
+    - name: base-task
       taskRef:
         name: some-task
     
-    # Post-dev steps if provided
-    {{- if .PostDevSteps }}
-    {{ .PostDevSteps }}
+    # Custom steps via array parameter
+    {{- if .CustomSteps }}
+    {{ .CustomSteps }}
     {{- end }}
     
-    # Prod task with dependencies on dev tasks
-    - name: prod-task
+    # Second task with dependencies on custom steps
+    - name: second-task
       runAfter:
-      {{- if .DevTaskNames }}
-      {{- range .DevTaskNames }}
+      {{- if .CustomStepsNames }}
+      {{- range .CustomStepsNames }}
       - {{ . }}
       {{- end }}
       {{- else }}
-      - dev-task
+      - base-task
       {{- end }}
       taskRef:
-        name: prod-task-ref
+        name: second-task-ref
+        
+    # Post-dev steps via string parameter (legacy format)
+    {{- if .PostDevSteps }}
+    {{ .PostDevSteps }}
+    {{- end }}
 `,
 		},
 	}
@@ -232,7 +237,7 @@ spec:
 		fetcher: mockData,
 	}
 	
-	// Test with legacy post-dev-steps parameter
+	// Test with both array and string parameters containing tasks
 	params := []pipelinev1.Param{
 		{
 			Name: "repository",
@@ -248,18 +253,48 @@ spec:
 				StringVal: "path1",
 			},
 		},
+		// Array parameter with tasks
 		{
-			Name: "post-dev-steps",
+			Name: "custom-steps",
 			Value: pipelinev1.ParamValue{
 				Type: "array",
 				ArrayVal: []string{
-					`name: dev-validation
+					`name: custom-validation
 taskRef:
   name: validator
 params:
   - name: target
-    value: dev`,
+    value: custom`,
 				},
+			},
+		},
+		// String parameter with tasks (legacy format)
+		{
+			Name: "post-dev-steps",
+			Value: pipelinev1.ParamValue{
+				Type: "string",
+				StringVal: `- name: dev-validation
+  taskRef:
+    name: validator
+  params:
+    - name: target
+      value: dev`,
+			},
+		},
+		// Regular string parameter
+		{
+			Name: "simple-param",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "simple-value",
+			},
+		},
+		// Regular array parameter
+		{
+			Name: "environments",
+			Value: pipelinev1.ParamValue{
+				Type:     "array",
+				ArrayVal: []string{"dev", "staging", "production"},
 			},
 		},
 	}
@@ -271,10 +306,11 @@ params:
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	
-	// Check that the template was rendered with our post-dev steps
+	// Check that the template was rendered with both task types
 	renderedData := string(result.Data())
+	assert.Contains(t, renderedData, "name: custom-validation")
 	assert.Contains(t, renderedData, "name: dev-validation")
-	assert.Contains(t, renderedData, "- dev-validation")
+	assert.Contains(t, renderedData, "- custom-validation")
 }
 
 // TestResolverMultipleTaskParameters tests the resolver with multiple custom task parameters
