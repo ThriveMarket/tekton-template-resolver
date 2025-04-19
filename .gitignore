@@ -27,3 +27,5 @@ template-resolver
 
 # Environment variables
 .env
+
+coverage.html
