@@ -12,46 +12,43 @@ spec:
       value: simple.yaml
     - name: post-dev-steps
       value:
-        - |
-          - name: run-integration-tests
-            runAfter:
-              - simulated-deploy
-            taskSpec:
-              steps:
-              - name: echo-test
-                image: alpine:3.15.1
-                script: |
-                  echo "Running integration tests for $(params.app-name)..."
-                  echo "Test suite: smoke"
-                  echo "App URL: https://$(params.app-name).dev.example.com"
-                  echo "Test completed successfully!"
+        - name: run-integration-tests
+          runAfter:
+            - simulated-deploy
+          taskSpec:
+            steps:
+            - name: echo-test
+              image: alpine:3.15.1
+              script: |
+                echo "Running integration tests for $(params.app-name)..."
+                echo "Test suite: smoke"
+                echo "App URL: https://$(params.app-name).dev.example.com"
+                echo "Test completed successfully!"
     - name: post-prod-steps
       value:
-        - |
-          - name: verify-deployment
-            runAfter:
-              - simulated-prod-deploy
-            taskSpec:
-              steps:
-              - name: echo-verify
-                image: alpine:3.15.1
-                script: |
-                  echo "Verifying production deployment of $(params.app-name)..."
-                  echo "Checking endpoint: /health"
-                  echo "Timeout: 300s"
-                  echo "Verification completed successfully!"
+        - name: verify-deployment
+          runAfter:
+            - simulated-prod-deploy
+          taskSpec:
+            steps:
+            - name: echo-verify
+              image: alpine:3.15.1
+              script: |
+                echo "Verifying production deployment of $(params.app-name)..."
+                echo "Checking endpoint: /health"
+                echo "Timeout: 300s"
+                echo "Verification completed successfully!"
     # Custom parameter with tasks (to test dynamic parameter support)
     - name: security-audit-steps
       value:
-        - |
-          - name: run-security-scan
-            taskSpec:
-              steps:
-              - name: scan
-                image: alpine:3.15.1
-                script: |
-                  echo "Running security scan for $(params.app-name)..."
-                  echo "Scan completed successfully!"
+        - name: run-security-scan
+          taskSpec:
+            steps:
+            - name: scan
+              image: alpine:3.15.1
+              script: |
+                echo "Running security scan for $(params.app-name)..."
+                echo "Scan completed successfully!"
     # Regular array parameter (not tasks)
     - name: allowed-environments
       value:

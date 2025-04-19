@@ -36,33 +36,30 @@ spec:
       value: templates/standard-deploy.yaml
     - name: post-dev-steps
       value:
-        - |
-          - name: run-integration-tests
-            taskRef:
-              name: integration-test
-            params:
-              - name: test-suite
-                value: smoke
+        - name: run-integration-tests
+          taskRef:
+            name: integration-test
+          params:
+            - name: test-suite
+              value: smoke
     - name: post-prod-steps
       value:
-        - |
-          - name: verify-deployment
-            taskRef:
-              name: deployment-verification
-            params:
-              - name: timeout
-                value: "300"
+        - name: verify-deployment
+          taskRef:
+            name: deployment-verification
+          params:
+            - name: timeout
+              value: "300"
     # Custom parameter with tasks
     - name: security-audit-steps
       value:
-        - |
-          - name: run-security-scan
-            taskSpec:
-              steps:
-              - name: scan
-                image: security-scanner:latest
-                script: |
-                  echo "Running security scan..."
+        - name: run-security-scan
+          taskSpec:
+            steps:
+            - name: scan
+              image: security-scanner:latest
+              script: |
+                echo "Running security scan..."
     # Regular array parameter (not tasks)
     - name: allowed-environments
       value:
