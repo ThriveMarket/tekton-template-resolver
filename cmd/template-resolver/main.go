@@ -49,6 +49,9 @@ func (r *resolver) GetSelector(context.Context) map[string]string {
 const (
 	RepositoryParam = "repository"
 	PathParam       = "path"
+	
+	// Legacy parameters - kept for backward compatibility
+	// We process all parameters dynamically now, these are just for documentation
 	PostDevParam    = "post-dev-steps"
 	PostProdParam   = "post-prod-steps"
 )
@@ -76,19 +79,31 @@ func (r *resolver) ValidateParams(ctx context.Context, params []pipelinev1.Param
 // Resolve fetches the template from Git, applies parameters, and returns the rendered template.
 func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (framework.ResolvedResource, error) {
 	fmt.Printf("DEBUG: Resolve called with %d params\n", len(params))
-	// Extract parameters
+	
+	// Extract required parameters
 	var repository, path string
+	
+	// For backward compatibility
 	var postDevStepsTasks, postProdStepsTasks []map[string]interface{}
+	
+	// Dynamic parameter map to pass to template
+	templateData := make(map[string]interface{})
 	
 	for _, param := range params {
 		fmt.Printf("DEBUG: Processing param: %s (type: %s)\n", param.Name, param.Value.Type)
+		
+		// Set required parameters and continue processing others
 		switch param.Name {
 		case RepositoryParam:
 			repository = param.Value.StringVal
 			fmt.Printf("DEBUG: Repository: %s\n", repository)
+			templateData[RepositoryParam] = repository
+			continue
 		case PathParam:
 			path = param.Value.StringVal
 			fmt.Printf("DEBUG: Path: %s\n", path)
+			templateData[PathParam] = path
+			continue
 		case PostDevParam:
 			// Handle both array and string formats for backward compatibility
 			if param.Value.Type == "array" {
@@ -236,14 +251,96 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 		}
 	}
 
-	// Define template data with properly formatted steps
-	templateData := map[string]interface{}{
-		"PostDevSteps":  formattedPostDevSteps,
-		"PostProdSteps": formattedPostProdSteps,
-		"DevTaskName":   devTaskName,
-		"ProdTaskName":  prodTaskName,
-		"DevTaskNames":  devTaskNames,
-		"ProdTaskNames": prodTaskNames,
+	// Add legacy parameters to the template data
+	camelDevParam := toCamelCase(PostDevParam)
+	camelProdParam := toCamelCase(PostProdParam)
+	
+	templateData[camelDevParam] = formattedPostDevSteps
+	templateData[camelProdParam] = formattedPostProdSteps
+	templateData["DevTaskName"] = devTaskName
+	templateData["ProdTaskName"] = prodTaskName
+	templateData["DevTaskNames"] = devTaskNames
+	templateData["ProdTaskNames"] = prodTaskNames
+	
+	// Process all other parameters not explicitly handled
+	for _, param := range params {
+		// Skip parameters we've already processed
+		if param.Name == RepositoryParam || param.Name == PathParam || 
+		   param.Name == PostDevParam || param.Name == PostProdParam {
+			continue
+		}
+		
+		// Convert parameter name to camel case for template
+		camelName := toCamelCase(param.Name)
+		
+		// Skip if we've already set this parameter name
+		if _, exists := templateData[camelName]; exists {
+			continue
+		}
+		
+		// Process based on parameter type
+		switch param.Value.Type {
+		case pipelinev1.ParamTypeArray:
+			fmt.Printf("DEBUG: Processing generic array parameter %s\n", param.Name)
+			
+			// Try to parse each array element as a task definition
+			var tasks []map[string]interface{}
+			for i, arrayItem := range param.Value.ArrayVal {
+				var task map[string]interface{}
+				if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
+					fmt.Printf("Warning: Failed to parse %s array item %d as YAML: %v\n", param.Name, i, err)
+					continue
+				}
+				
+				// Check if this looks like a task (has a "name" field)
+				if _, hasName := task["name"]; hasName {
+					tasks = append(tasks, task)
+				}
+			}
+			
+			// If we found tasks, extract names and format them
+			if len(tasks) > 0 {
+				// Format tasks for YAML inclusion
+				tasksBytes, err := yaml.Marshal(tasks)
+				if err != nil {
+					fmt.Printf("WARNING: Failed to marshal %s tasks: %v\n", param.Name, err)
+				} else {
+					formattedTasks, err := formatTasksYAML(string(tasksBytes))
+					if err != nil {
+						fmt.Printf("WARNING: Failed to format %s: %v\n", param.Name, err)
+					} else {
+						// Add formatted tasks to template data
+						fmt.Printf("DEBUG: Adding generic tasks as %s\n", camelName)
+						templateData[camelName] = formattedTasks
+						
+						// Extract task names
+						var taskNames []string
+						for _, task := range tasks {
+							if name, ok := task["name"].(string); ok {
+								taskNames = append(taskNames, name)
+							}
+						}
+						
+						// Add task names to template data
+						if len(taskNames) > 0 {
+							namesParam := camelName + "Names"
+							fmt.Printf("DEBUG: Adding task names as %s\n", namesParam)
+							templateData[namesParam] = taskNames
+						}
+					}
+				}
+			} else {
+				// Just a regular array parameter
+				templateData[camelName] = param.Value.ArrayVal
+			}
+			
+		case pipelinev1.ParamTypeObject:
+			// Pass through object parameters
+			templateData[camelName] = param.Value.ObjectVal
+			
+		default: // String or other type
+			templateData[camelName] = param.Value.StringVal
+		}
 	}
 
 	// Render the template
@@ -560,4 +657,51 @@ func (r *templateResource) Annotations() map[string]string {
 // RefSource returns source reference information about the template
 func (r *templateResource) RefSource() *pipelinev1.RefSource {
 	return r.source
+}
+
+// Helper function to convert parameter names to camel case for Go templates
+// Example: "post-dev-steps" -> "PostDevSteps"
+func toCamelCase(paramName string) string {
+	parts := strings.Split(paramName, "-")
+	for i := range parts {
+		parts[i] = strings.Title(parts[i])
+	}
+	return strings.Join(parts, "")
+}
+
+// Handle backward compatibility for legacy parameter names
+func mapLegacyNames(templateData map[string]interface{}) {
+	// Ensure PostDevSteps and related fields are available
+	if _, exists := templateData["PostDevSteps"]; !exists {
+		templateData["PostDevSteps"] = ""
+	}
+	if _, exists := templateData["PostProdSteps"]; !exists {
+		templateData["PostProdSteps"] = ""
+	}
+	
+	// Default task names if not set
+	if _, exists := templateData["DevTaskNames"]; !exists {
+		templateData["DevTaskNames"] = []string{}
+	}
+	if _, exists := templateData["ProdTaskNames"]; !exists {
+		templateData["ProdTaskNames"] = []string{}
+	}
+	
+	// Backward compatibility for single task name
+	if _, exists := templateData["DevTaskName"]; !exists {
+		devNames, ok := templateData["DevTaskNames"].([]string)
+		if ok && len(devNames) > 0 {
+			templateData["DevTaskName"] = devNames[len(devNames)-1]
+		} else {
+			templateData["DevTaskName"] = "default-dev-validation"
+		}
+	}
+	if _, exists := templateData["ProdTaskName"]; !exists {
+		prodNames, ok := templateData["ProdTaskNames"].([]string)
+		if ok && len(prodNames) > 0 {
+			templateData["ProdTaskName"] = prodNames[len(prodNames)-1]
+		} else {
+			templateData["ProdTaskName"] = "default-prod-validation"
+		}
+	}
 }

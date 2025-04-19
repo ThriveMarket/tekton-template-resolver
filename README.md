@@ -17,7 +17,9 @@ This resolver addresses [a limitation in Tekton](https://github.com/tektoncd/pip
 
 To use the Template Resolver in your Tekton pipeline, create a ResolutionRequest with the following parameters:
 
-> **Note**: The `post-dev-steps` and `post-prod-steps` parameters use Tekton's array parameter type for structured data validation. This provides better error reporting and eliminates parsing issues with malformed YAML strings.
+> **Note**: The resolver supports arbitrary parameter names and will make all parameters available to the template. For parameters containing Tekton tasks, task names are automatically extracted and made available as `ParameterNamesNames` (e.g., `SecurityAuditStepsNames` for a parameter named `security-audit-steps`).
+
+> **Parameter Types**: Array parameters containing YAML tasks should use Tekton's array parameter type for structured data validation. This provides better error reporting and eliminates parsing issues with malformed YAML strings.
 
 ```yaml
 apiVersion: resolution.tekton.dev/v1beta1
@@ -50,6 +52,52 @@ spec:
             params:
               - name: timeout
                 value: "300"
+    # Custom parameter with tasks
+    - name: security-audit-steps
+      value:
+        - |
+          - name: run-security-scan
+            taskSpec:
+              steps:
+              - name: scan
+                image: security-scanner:latest
+                script: |
+                  echo "Running security scan..."
+    # Regular array parameter (not tasks)
+    - name: allowed-environments
+      value:
+        - "dev"
+        - "staging"
+        - "production"
+```
+
+### Using Custom Parameters in Templates
+
+When creating templates for use with this resolver, you can access any parameter by its camel-cased name:
+
+```yaml
+# Example: Using a custom "security-audit-steps" parameter
+{{- if .SecurityAuditSteps }}
+# Include the security audit tasks
+{{.SecurityAuditSteps}}
+{{- end }}
+
+# Example: Using task names from custom parameters
+- name: next-task
+  runAfter:
+  {{- if .SecurityAuditStepsNames }}
+  {{- range .SecurityAuditStepsNames }}
+  - {{.}}
+  {{- end }}
+  {{- else }}
+  - default-task
+  {{- end }}
+
+# Example: Using a regular array parameter
+allowed-environments:
+{{- range .AllowedEnvironments }}
+- {{.}}
+{{- end }}
 ```
 
 ## Installation

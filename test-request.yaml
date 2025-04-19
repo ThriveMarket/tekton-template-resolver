@@ -40,3 +40,21 @@ spec:
                   echo "Checking endpoint: /health"
                   echo "Timeout: 300s"
                   echo "Verification completed successfully!"
+    # Custom parameter with tasks (to test dynamic parameter support)
+    - name: security-audit-steps
+      value:
+        - |
+          - name: run-security-scan
+            taskSpec:
+              steps:
+              - name: scan
+                image: alpine:3.15.1
+                script: |
+                  echo "Running security scan for $(params.app-name)..."
+                  echo "Scan completed successfully!"
+    # Regular array parameter (not tasks)
+    - name: allowed-environments
+      value:
+        - "dev"
+        - "staging"
+        - "production"
