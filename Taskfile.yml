@@ -78,25 +78,50 @@ tasks:
     deps: [container:deploy]
     cmds:
       - |
+        # Define the PipelineRun name for consistent reference
+        PIPELINE_RUN_NAME="example-app-deployment"
+        
         # Delete any existing PipelineRun with the same name
         echo "Cleaning up any existing PipelineRun..."
-        kubectl delete pipelinerun example-app-deployment --ignore-not-found=true
+        kubectl delete pipelinerun $PIPELINE_RUN_NAME --ignore-not-found=true
         
         # Wait a moment for resources to be released
         sleep 2
         
         # Apply the new PipelineRun
-        echo "Creating new PipelineRun..."
+        echo "Creating new PipelineRun '$PIPELINE_RUN_NAME'..."
         kubectl apply -f examples/usage-example.yaml
         
-        # Wait for PipelineRun to start and monitor its progress
-        echo "Waiting for PipelineRun to start..."
-        sleep 5
-        LATEST_RUN=$(kubectl get pipelineruns -o name | tail -1)
-        echo "Monitoring $LATEST_RUN"
-        kubectl wait --for=condition=succeeded $LATEST_RUN --timeout=180s
-        echo "PipelineRun details:"
-        kubectl describe $LATEST_RUN
+        # Wait for the PipelineRun to be created
+        echo "Waiting for PipelineRun to be created..."
+        COUNTER=0
+        while [ $COUNTER -lt 10 ]; do
+          if kubectl get pipelinerun $PIPELINE_RUN_NAME >/dev/null 2>&1; then
+            echo "PipelineRun '$PIPELINE_RUN_NAME' created successfully"
+            break
+          fi
+          sleep 1
+          COUNTER=$((COUNTER+1))
+        done
+        
+        if [ $COUNTER -eq 10 ]; then
+          echo "ERROR: Timed out waiting for PipelineRun to be created"
+          exit 1
+        fi
+        
+        # Wait for the run to complete with specific name
+        echo "Waiting for PipelineRun '$PIPELINE_RUN_NAME' to succeed..."
+        if kubectl wait --for=condition=succeeded "pipelinerun/$PIPELINE_RUN_NAME" --timeout=180s; then
+          echo "PipelineRun succeeded!"
+          
+          # Show detailed output
+          echo "PipelineRun details:"
+          kubectl describe pipelinerun $PIPELINE_RUN_NAME
+        else
+          echo "PipelineRun failed or timed out"
+          kubectl describe pipelinerun $PIPELINE_RUN_NAME
+          exit 1
+        fi
 
   clean:
     desc: Clean up build artifacts
@@ -108,29 +133,46 @@ tasks:
     deps: [setup:kind, container:deploy]
     cmds:
       - |
+        # Define the PipelineRun name for consistent reference
+        PIPELINE_RUN_NAME="example-app-deployment"
+        
         # Delete any existing PipelineRun with the same name
         echo "Cleaning up any existing PipelineRun..."
-        kubectl delete pipelinerun example-app-deployment --ignore-not-found=true
+        kubectl delete pipelinerun $PIPELINE_RUN_NAME --ignore-not-found=true
         
         # Wait a moment for resources to be released
         sleep 2
         
         # Apply the test resources
-        echo "Creating test PipelineRun..."
+        echo "Creating test PipelineRun '$PIPELINE_RUN_NAME'..."
         kubectl apply -f examples/usage-example.yaml
-        sleep 5
         
-        # Check the status of the PipelineRun
-        LATEST_RUN=$(kubectl get pipelineruns -o name | tail -1)
-        echo "Testing $LATEST_RUN"
+        # Wait for the PipelineRun to be created
+        echo "Waiting for PipelineRun to be created..."
+        COUNTER=0
+        while [ $COUNTER -lt 10 ]; do
+          if kubectl get pipelinerun $PIPELINE_RUN_NAME >/dev/null 2>&1; then
+            echo "PipelineRun '$PIPELINE_RUN_NAME' created successfully"
+            break
+          fi
+          sleep 1
+          COUNTER=$((COUNTER+1))
+        done
         
-        # Wait for the run to complete
-        if kubectl wait --for=condition=succeeded $LATEST_RUN --timeout=180s; then
+        if [ $COUNTER -eq 10 ]; then
+          echo "ERROR: Timed out waiting for PipelineRun to be created"
+          exit 1
+        fi
+        
+        # Wait for the run to complete with specific name
+        echo "Waiting for PipelineRun '$PIPELINE_RUN_NAME' to succeed..."
+        if kubectl wait --for=condition=succeeded "pipelinerun/$PIPELINE_RUN_NAME" --timeout=180s; then
           echo "End-to-End test passed!"
+          kubectl get pipelinerun $PIPELINE_RUN_NAME -o jsonpath='{.status.conditions[0].message}'
           exit 0
         else
           echo "End-to-End test failed!"
-          kubectl describe $LATEST_RUN
+          kubectl describe pipelinerun $PIPELINE_RUN_NAME
           exit 1
         fi
 
