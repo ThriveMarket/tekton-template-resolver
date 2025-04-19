@@ -7,14 +7,14 @@ spec:
     resolver: template
     params:
       - name: repository
-        value: https://github.com/thrivemarket/template-resolver
+        value: https://gist.github.com/justinabrahms/dfddf710d7884f997f0b648a07d7619c
       - name: path
-        value: examples/templates/simple.yaml
+        value: simple.yaml
       - name: post-dev-steps
         value: |
           - name: run-integration-tests
             runAfter:
-              - simulated-deploy
+              - simulated-dev-deploy
             taskSpec:
               steps:
               - name: echo-test
@@ -29,7 +29,7 @@ spec:
         value: |
           - name: verify-deployment
             runAfter:
-              - simulated-deploy
+              - simulated-prod-deploy
             taskSpec:
               steps:
               - name: echo-verify

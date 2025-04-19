@@ -14,7 +14,7 @@ spec:
       value:
         - name: run-integration-tests
           runAfter:
-            - simulated-deploy
+            - simulated-dev-deploy
           taskSpec:
             steps:
             - name: echo-test
