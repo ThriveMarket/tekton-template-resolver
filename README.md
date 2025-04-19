@@ -2,24 +2,40 @@
 
 ## Overview
 
-The Template Resolver extends Tekton's capabilities by enabling teams to use a centralized pipeline while customizing post-deployment steps for their specific applications. We maintain a standardized CI/CD workflow with consistent Slack notifications and service updates, while empowering teams with the flexibility to define their own validation and post-deployment processes.
+The Template Resolver extends Tekton's capabilities by enabling teams to use a centralized pipeline template while customizing specific sections with their own tasks. The resolver fetches templates from Git repositories and dynamically renders them with user-provided parameters, providing a flexible and maintainable approach to pipeline definition.
 
-This resolver addresses [a limitation in Tekton](https://github.com/tektoncd/pipeline/issues/8711) by implementing a custom resolution mechanism that fetches templates from Git repositories and renders them with user-provided parameters.
+This resolver addresses [a limitation in Tekton](https://github.com/tektoncd/pipeline/issues/8711) by implementing a custom resolution mechanism that allows pipeline templates to be parameterized with complex structures like tasks.
 
 ## How It Works
 
-1. **Template Source**: The resolver fetches pipeline templates from public Git repositories
-2. **Go Templating**: Templates use Go's standard templating syntax for customization
-3. **Post-Deploy Steps**: Teams define custom steps for dev and prod deployment validation
-4. **Order Dependencies**: Parallel execution is managed through step dependencies
+1. **Template Source**: The resolver fetches pipeline templates from Git repositories (public GitHub, GitHub Gists, or private Git repos)
+2. **Dynamic Parameters**: Any parameter can contain Tekton tasks, which are automatically detected and processed
+3. **Go Templating**: Templates use Go's standard templating syntax for customization
+4. **Task Dependencies**: Task names are automatically extracted and made available to templates for defining dependencies
 
 ## Usage
 
 To use the Template Resolver in your Tekton pipeline, create a ResolutionRequest with the following parameters:
 
-> **Note**: The resolver supports arbitrary parameter names and will make all parameters available to the template. For parameters containing Tekton tasks, task names are automatically extracted and made available as `ParameterNamesNames` (e.g., `SecurityAuditStepsNames` for a parameter named `security-audit-steps`).
+### Required Parameters
 
-> **Parameter Types**: Array parameters containing YAML tasks should use Tekton's array parameter type for structured data validation. This provides better error reporting and eliminates parsing issues with malformed YAML strings.
+- `repository`: URL of the Git repository containing the template (GitHub, GitHub Gist, or any Git repo URL)
+- `path`: Path to the template file within the repository
+
+### Dynamic Parameters
+
+In addition to the required parameters, you can include any number of custom parameters. The resolver has the following special handling for parameters:
+
+1. **Task Parameters**: Any parameter containing Tekton tasks will be processed specially:
+   - Task YAML will be properly formatted for inclusion in the pipeline
+   - Task names will be extracted and made available as `<CamelCaseParamName>Names`
+   - The last task name will be available as `<CamelCaseParamName>Name`
+
+2. **Regular Parameters**: Other parameters are passed through directly to the template
+
+> **Parameter Formats**: The resolver can detect and process tasks in both array parameters and string parameters. However, using array parameters is recommended as it provides better structure and validation.
+
+### Example ResolutionRequest
 
 ```yaml
 apiVersion: resolution.tekton.dev/v1beta1
@@ -30,11 +46,14 @@ metadata:
     resolution.tekton.dev/type: template
 spec:
   params:
+    # Required parameters
     - name: repository
       value: https://github.com/example/pipeline-templates
     - name: path
       value: templates/standard-deploy.yaml
-    - name: post-dev-steps
+      
+    # Custom parameters with tasks (recommended array format)
+    - name: validation-steps
       value:
         - name: run-integration-tests
           taskRef:
@@ -42,17 +61,10 @@ spec:
           params:
             - name: test-suite
               value: smoke
-    - name: post-prod-steps
-      value:
-        - name: verify-deployment
-          taskRef:
-            name: deployment-verification
-          params:
-            - name: timeout
-              value: "300"
-    # Custom parameter with tasks
-    - name: security-audit-steps
-      value:
+    
+    # Custom parameter with tasks (string format also works)
+    - name: security-steps
+      value: |
         - name: run-security-scan
           taskSpec:
             steps:
@@ -60,31 +72,36 @@ spec:
               image: security-scanner:latest
               script: |
                 echo "Running security scan..."
-    # Regular array parameter (not tasks)
+                
+    # Regular array parameter
     - name: allowed-environments
       value:
         - "dev"
         - "staging"
         - "production"
+        
+    # Regular string parameter
+    - name: app-name
+      value: "my-service"
 ```
 
-### Using Custom Parameters in Templates
+### Using Parameters in Templates
 
-When creating templates for use with this resolver, you can access any parameter by its camel-cased name:
+When creating templates, you can access any parameter by its camel-cased name. For parameters containing tasks, you also have access to the task names:
 
 ```yaml
-# Example: Using a custom "security-audit-steps" parameter
-{{- if .SecurityAuditSteps }}
-# Include the security audit tasks
-{{.SecurityAuditSteps}}
+# Example: Using a task parameter
+{{- if .ValidationSteps }}
+# Include the validation tasks
+{{ .ValidationSteps }}
 {{- end }}
 
-# Example: Using task names from custom parameters
+# Example: Using task names from parameters
 - name: next-task
   runAfter:
-  {{- if .SecurityAuditStepsNames }}
-  {{- range .SecurityAuditStepsNames }}
-  - {{.}}
+  {{- if .ValidationStepsNames }}
+  {{- range .ValidationStepsNames }}
+  - {{ . }}
   {{- end }}
   {{- else }}
   - default-task
@@ -93,8 +110,11 @@ When creating templates for use with this resolver, you can access any parameter
 # Example: Using a regular array parameter
 allowed-environments:
 {{- range .AllowedEnvironments }}
-- {{.}}
+- {{ . }}
 {{- end }}
+
+# Example: Using a regular string parameter
+app-name: {{ .AppName }}
 ```
 
 ## Installation
@@ -137,6 +157,7 @@ Before you begin, ensure you have the following tools installed:
 - **ko**: Used to build and deploy container images (`brew install ko`)
 - **kubectl**: Required for interacting with Kubernetes clusters (`brew install kubectl`)
 - **Kind** (optional but recommended): For local testing with a Kubernetes cluster (`brew install kind`)
+- **Task** (optional): A task runner for easier development workflows (`go install github.com/go-task/task/v3/cmd/task@latest`)
 
 For local development with Kind, set the following environment variable:
 
@@ -146,33 +167,40 @@ export KO_DOCKER_REPO=kind.local
 
 This ensures that container images built with ko are pushed to your local Kind registry.
 
-### Installing Tekton in your Kind cluster
+### Using Taskfile for Development
 
-After creating your Kind cluster, you need to install Tekton Pipelines:
+This repository includes a Taskfile that simplifies common development operations. To see all available tasks, run:
 
 ```bash
-kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+task
 ```
 
-Wait for Tekton to be ready:
+Common tasks include:
 
 ```bash
-kubectl wait --for=condition=ready pod -l app=tekton-pipelines-controller -n tekton-pipelines
-```
-
-### Build and Test Manually
-
-```bash
-# Build the resolver
-go build ./cmd/template-resolver
+# Build the binary
+task build
 
 # Run tests
-go test ./...
+task test
 
-# Build and deploy to local kind cluster
-ko build thrivemarket.com/template-resolver/cmd/template-resolver
-# Update deployment.yaml with the resulting image URL
-kubectl apply -f config/deployment.yaml
+# Run tests with coverage report
+task test:coverage
+
+# Lint the code
+task lint
+
+# Build and deploy to Kubernetes
+task container:deploy
+
+# Set up a local Kind cluster with Tekton
+task setup:kind
+
+# Run an example pipeline
+task run:example
+
+# Run end-to-end tests
+task e2e:test
 ```
 
 ### Testing with Coverage
@@ -180,48 +208,51 @@ kubectl apply -f config/deployment.yaml
 To generate and view test coverage:
 
 ```bash
-# Generate coverage profile
-go test ./... -coverprofile=coverage.out
-
-# Convert to HTML
-go tool cover -html=coverage.out -o coverage.html
-
-# Open in browser (macOS)
-open coverage.html
+task test:coverage
 ```
 
 This will create an interactive HTML report highlighting covered and uncovered code in different colors, making it easy to identify areas that need additional tests.
 
+For more detailed information about available commands, examine the Taskfile.yml in the repository root.
+
 ### Helper Scripts
 
-The repository includes helper scripts to simplify common operations:
+The repository also includes helper scripts to simplify specific operations:
 
 ```bash
-# Test the resolver locally (builds, deploys, and runs a test request)
+# Test the resolver locally
 ./scripts/test-locally.sh
 
-# Update the GitHub Gist with the latest template
+# Update a GitHub Gist with the latest template
 ./scripts/update-gist.sh
 
 # Execute and monitor a test pipeline
 ./scripts/run-pipeline.sh
 ```
 
-The `run-pipeline.sh` script simplifies pipeline execution by:
-- Cleaning up any previous pipeline runs
-- Applying the pipeline definition
-- Monitoring the pipeline execution status
-- Displaying detailed information in case of failures
+## Features
+
+- **Universal Parameter Handling**: Any parameter can contain Tekton tasks, which are automatically processed
+- **Multiple Repository Types**: Support for GitHub repositories, GitHub Gists, and any Git repository URL
+- **Consistent Naming Convention**: All parameters are converted to camelCase for template use
+- **Task Name Extraction**: Task names are automatically extracted for use in dependencies
+- **Flexible Parameter Formats**: Works with both array parameters and string parameters containing YAML
 
 ## Roadmap
 
 - Template caching for improved performance
 - Additional template sources (S3, OCI)
 - Enhanced validation capabilities
-- Support for different Git branches
+- Support for different Git branches and tags
 - Parameterized templates with default values
-- Support for arbitrary template keys/context (beyond just post-deploy steps)
+- Improved error reporting for template rendering issues
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes and add tests
+4. Ensure all tests pass with `task test`
+5. Submit a pull request

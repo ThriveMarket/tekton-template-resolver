@@ -1,0 +1,127 @@
+version: '3'
+
+# Define environment variables used across tasks
+env:
+  VERSION: '0.1.0'
+  KO_DOCKER_REPO: '{{default "kind.local" .KO_DOCKER_REPO}}'
+
+tasks:
+  default:
+    cmds:
+      - task -l
+    desc: Lists all available tasks
+
+  build:
+    desc: Build the template-resolver binary
+    cmds:
+      - go build -o bin/template-resolver ./cmd/template-resolver
+    generates:
+      - bin/template-resolver
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  test:coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - go test ./... -coverprofile=coverage.out
+      - go tool cover -html=coverage.out -o coverage.html
+      - '{{if eq OS "darwin"}}open{{else}}xdg-open{{end}} coverage.html'
+
+  lint:
+    desc: Run golangci-lint on the codebase
+    cmds:
+      - golangci-lint run
+
+  container:build:
+    desc: Build the container image using ko
+    cmds:
+      - ko build -B thrivemarket.com/template-resolver/cmd/template-resolver
+    env:
+      KO_DOCKER_REPO: "{{.KO_DOCKER_REPO}}"
+
+  container:deploy:
+    desc: Deploy template-resolver to Kubernetes cluster
+    deps: [container:build]
+    cmds:
+      - ko apply -f config/
+
+  mod:tidy:
+    desc: Tidy up the go.mod file
+    cmds:
+      - go mod tidy
+
+  setup:kind:
+    desc: Set up a local Kind cluster for development
+    cmds:
+      - |
+        if ! kind get clusters | grep -q template-resolver; then
+          kind create cluster --name template-resolver
+        else
+          echo "Cluster already exists"
+        fi
+      - kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+      - echo "Waiting for Tekton to be ready..."
+      - kubectl wait --for=condition=ready pod -l app=tekton-pipelines-controller -n tekton-pipelines --timeout=180s
+    
+  install:tekton:
+    desc: Install Tekton Pipelines in the current cluster
+    cmds:
+      - kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+      - echo "Waiting for Tekton to be ready..."
+      - kubectl wait --for=condition=ready pod -l app=tekton-pipelines-controller -n tekton-pipelines --timeout=180s
+
+  run:example:
+    desc: Run an example pipeline using the template-resolver
+    deps: [container:deploy]
+    cmds:
+      - kubectl apply -f examples/usage-example.yaml
+      - |
+        echo "Waiting for PipelineRun to start..."
+        sleep 5
+        LATEST_RUN=$(kubectl get pipelineruns -o name | tail -1)
+        echo "Monitoring $LATEST_RUN"
+        kubectl wait --for=condition=succeeded $LATEST_RUN --timeout=180s
+        echo "PipelineRun details:"
+        kubectl describe $LATEST_RUN
+
+  clean:
+    desc: Clean up build artifacts
+    cmds:
+      - rm -rf bin/ coverage.out coverage.html
+
+  e2e:test:
+    desc: Run end-to-end tests
+    deps: [setup:kind, container:deploy]
+    cmds:
+      - |
+        # Apply the test resources
+        kubectl apply -f examples/usage-example.yaml
+        sleep 5
+        
+        # Check the status of the PipelineRun
+        LATEST_RUN=$(kubectl get pipelineruns -o name | tail -1)
+        echo "Testing $LATEST_RUN"
+        
+        # Wait for the run to complete
+        if kubectl wait --for=condition=succeeded $LATEST_RUN --timeout=180s; then
+          echo "End-to-End test passed!"
+          exit 0
+        else
+          echo "End-to-End test failed!"
+          kubectl describe $LATEST_RUN
+          exit 1
+        fi
+
+  upgrade:deps:
+    desc: Upgrade dependencies to latest versions
+    cmds:
+      - go get -u all
+      - go mod tidy
+
+  goreleaser:snapshot:
+    desc: Create a snapshot release with goreleaser
+    cmds:
+      - goreleaser release --snapshot --rm-dist
