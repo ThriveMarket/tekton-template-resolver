@@ -22,11 +22,29 @@ import (
 
 func main() {
 	sharedmain.Main("controller",
-		framework.NewController(context.Background(), &resolver{}),
+		framework.NewController(context.Background(), NewResolver()),
 	)
 }
 
-type resolver struct{}
+// TemplateFetcher defines the interface for fetching templates
+type TemplateFetcher interface {
+	FetchTemplate(repoURL, filePath string) (string, error)
+}
+
+// Default implementation for fetching templates
+type gitTemplateFetcher struct{}
+
+// resolver is the main implementation of the Tekton resolver
+type resolver struct{
+	fetcher TemplateFetcher
+}
+
+// NewResolver creates a new resolver with the default template fetcher
+func NewResolver() *resolver {
+	return &resolver{
+		fetcher: &gitTemplateFetcher{},
+	}
+}
 
 // Initialize sets up any dependencies needed by the resolver. None atm.
 func (r *resolver) Initialize(context.Context) error {
@@ -178,7 +196,7 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	}
 
 	// Fetch template from Git repository
-	templateContent, err := fetchTemplate(repository, path)
+	templateContent, err := r.fetcher.FetchTemplate(repository, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch template: %w", err)
 	}
@@ -371,8 +389,8 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	}, nil
 }
 
-// fetchTemplate retrieves a template from a Git repository or Gist
-func fetchTemplate(repoURL, filePath string) (string, error) {
+// FetchTemplate retrieves a template from a Git repository or Gist
+func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, error) {
 	// Handle GitHub Gist URLs
 	if strings.HasPrefix(repoURL, "https://gist.github.com/") {
 		// Convert Gist URL to raw content URL
