@@ -17,6 +17,8 @@ This resolver addresses [a limitation in Tekton](https://github.com/tektoncd/pip
 
 To use the Template Resolver in your Tekton pipeline, create a ResolutionRequest with the following parameters:
 
+> **Note**: The `post-dev-steps` and `post-prod-steps` parameters use Tekton's array parameter type for structured data validation. This provides better error reporting and eliminates parsing issues with malformed YAML strings.
+
 ```yaml
 apiVersion: resolution.tekton.dev/v1beta1
 kind: ResolutionRequest
@@ -31,21 +33,23 @@ spec:
     - name: path
       value: templates/standard-deploy.yaml
     - name: post-dev-steps
-      value: |
-        - name: run-integration-tests
-          taskRef:
-            name: integration-test
-          params:
-            - name: test-suite
-              value: smoke
+      value:
+        - |
+          - name: run-integration-tests
+            taskRef:
+              name: integration-test
+            params:
+              - name: test-suite
+                value: smoke
     - name: post-prod-steps
-      value: |
-        - name: verify-deployment
-          taskRef:
-            name: deployment-verification
-          params:
-            - name: timeout
-              value: "300"
+      value:
+        - |
+          - name: verify-deployment
+            taskRef:
+              name: deployment-verification
+            params:
+              - name: timeout
+                value: "300"
 ```
 
 ## Installation

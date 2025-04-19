@@ -77,9 +77,11 @@ func (r *resolver) ValidateParams(ctx context.Context, params []pipelinev1.Param
 func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (framework.ResolvedResource, error) {
 	fmt.Printf("DEBUG: Resolve called with %d params\n", len(params))
 	// Extract parameters
-	var repository, path, postDevSteps, postProdSteps string
+	var repository, path string
+	var postDevStepsTasks, postProdStepsTasks []map[string]interface{}
+	
 	for _, param := range params {
-		fmt.Printf("DEBUG: Processing param: %s\n", param.Name)
+		fmt.Printf("DEBUG: Processing param: %s (type: %s)\n", param.Name, param.Value.Type)
 		switch param.Name {
 		case RepositoryParam:
 			repository = param.Value.StringVal
@@ -88,11 +90,75 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 			path = param.Value.StringVal
 			fmt.Printf("DEBUG: Path: %s\n", path)
 		case PostDevParam:
-			postDevSteps = param.Value.StringVal
-			fmt.Printf("DEBUG: Post-dev steps length: %d bytes\n", len(postDevSteps))
+			// Handle both array and string formats for backward compatibility
+			if param.Value.Type == "array" {
+				fmt.Printf("DEBUG: Post-dev steps as array with %d elements\n", len(param.Value.ArrayVal))
+				// Parse each array element as a task
+				for i, arrayItem := range param.Value.ArrayVal {
+					var task map[string]interface{}
+					if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
+						fmt.Printf("Warning: Failed to parse post-dev-steps array item %d: %v\n", i, err)
+						continue
+					}
+					postDevStepsTasks = append(postDevStepsTasks, task)
+				}
+			} else if param.Value.Type == "object" {
+				// Handle if it's sent as an object
+				fmt.Printf("DEBUG: Post-dev steps as object (unexpected format)\n")
+				taskMap := make(map[string]interface{})
+				for k, v := range param.Value.ObjectVal {
+					taskMap[k] = v
+				}
+				postDevStepsTasks = append(postDevStepsTasks, taskMap)
+			} else {
+				// Legacy string format
+				postDevSteps := param.Value.StringVal
+				fmt.Printf("DEBUG: Post-dev steps as string: %d bytes\n", len(postDevSteps))
+				
+				if postDevSteps != "" {
+					var tasks []map[string]interface{}
+					if err := yaml.Unmarshal([]byte(postDevSteps), &tasks); err != nil {
+						fmt.Printf("Warning: Failed to parse post-dev-steps YAML: %v\n", err)
+					} else {
+						postDevStepsTasks = tasks
+					}
+				}
+			}
 		case PostProdParam:
-			postProdSteps = param.Value.StringVal
-			fmt.Printf("DEBUG: Post-prod steps length: %d bytes\n", len(postProdSteps))
+			// Handle both array and string formats for backward compatibility
+			if param.Value.Type == "array" {
+				fmt.Printf("DEBUG: Post-prod steps as array with %d elements\n", len(param.Value.ArrayVal))
+				// Parse each array element as a task
+				for i, arrayItem := range param.Value.ArrayVal {
+					var task map[string]interface{}
+					if err := yaml.Unmarshal([]byte(arrayItem), &task); err != nil {
+						fmt.Printf("Warning: Failed to parse post-prod-steps array item %d: %v\n", i, err)
+						continue
+					}
+					postProdStepsTasks = append(postProdStepsTasks, task)
+				}
+			} else if param.Value.Type == "object" {
+				// Handle if it's sent as an object 
+				fmt.Printf("DEBUG: Post-prod steps as object (unexpected format)\n")
+				taskMap := make(map[string]interface{})
+				for k, v := range param.Value.ObjectVal {
+					taskMap[k] = v
+				}
+				postProdStepsTasks = append(postProdStepsTasks, taskMap)
+			} else {
+				// Legacy string format
+				postProdSteps := param.Value.StringVal
+				fmt.Printf("DEBUG: Post-prod steps as string: %d bytes\n", len(postProdSteps))
+				
+				if postProdSteps != "" {
+					var tasks []map[string]interface{}
+					if err := yaml.Unmarshal([]byte(postProdSteps), &tasks); err != nil {
+						fmt.Printf("Warning: Failed to parse post-prod-steps YAML: %v\n", err)
+					} else {
+						postProdStepsTasks = tasks
+					}
+				}
+			}
 		}
 	}
 
@@ -102,81 +168,71 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 		return nil, fmt.Errorf("failed to fetch template: %w", err)
 	}
 
-	// Extract task names from post-deploy steps by parsing the YAML
+	// Extract task names from post-deploy steps
 	devTaskName := "default-dev-validation"   // Default when no custom steps
 	prodTaskName := "default-prod-validation" // Default when no custom steps
 	var devTaskNames []string
 	var prodTaskNames []string
 
-	// Parse the post-dev-steps YAML to extract all task names
-	if postDevSteps != "" {
-		var tasks []map[string]interface{}
-		err := yaml.Unmarshal([]byte(postDevSteps), &tasks)
-		if err != nil {
-			// Log the error but don't fail - use default
-			fmt.Printf("Warning: Failed to parse post-dev-steps YAML: %v\n", err)
-		} else {
-			// Extract all task names
-			for _, task := range tasks {
-				if name, ok := task["name"].(string); ok {
-					devTaskNames = append(devTaskNames, name)
-				}
-			}
-
-			// Set the last task name for backward compatibility
-			if len(devTaskNames) > 0 {
-				devTaskName = devTaskNames[len(devTaskNames)-1]
-			}
+	// Extract all dev task names from the tasks
+	for _, task := range postDevStepsTasks {
+		if name, ok := task["name"].(string); ok {
+			devTaskNames = append(devTaskNames, name)
 		}
 	}
 
-	// Parse the post-prod-steps YAML to extract all task names
-	if postProdSteps != "" {
-		var tasks []map[string]interface{}
-		err := yaml.Unmarshal([]byte(postProdSteps), &tasks)
-		if err != nil {
-			// Log the error but don't fail - use default
-			fmt.Printf("Warning: Failed to parse post-prod-steps YAML: %v\n", err)
-		} else {
-			// Extract all task names
-			for _, task := range tasks {
-				if name, ok := task["name"].(string); ok {
-					prodTaskNames = append(prodTaskNames, name)
-				}
-			}
+	// Set the last task name for backward compatibility
+	if len(devTaskNames) > 0 {
+		devTaskName = devTaskNames[len(devTaskNames)-1]
+	}
 
-			// Set the last task name for backward compatibility
-			if len(prodTaskNames) > 0 {
-				prodTaskName = prodTaskNames[len(prodTaskNames)-1]
-			}
+	// Extract all prod task names from the tasks
+	for _, task := range postProdStepsTasks {
+		if name, ok := task["name"].(string); ok {
+			prodTaskNames = append(prodTaskNames, name)
 		}
+	}
+
+	// Set the last task name for backward compatibility
+	if len(prodTaskNames) > 0 {
+		prodTaskName = prodTaskNames[len(prodTaskNames)-1]
 	}
 
 	// Format post-dev steps for pipeline inclusion
 	formattedPostDevSteps := ""
-	if postDevSteps != "" {
-		fmt.Printf("DEBUG: Formatting post-dev steps: %s\n", postDevSteps)
-		var err error
-		formattedPostDevSteps, err = formatTasksYAML(postDevSteps)
+	if len(postDevStepsTasks) > 0 {
+		fmt.Printf("DEBUG: Formatting %d post-dev steps\n", len(postDevStepsTasks))
+		tasksBytes, err := yaml.Marshal(postDevStepsTasks)
 		if err != nil {
-			// Log the error but don't fail - use empty string
-			fmt.Printf("WARNING: Failed to format post-dev-steps: %v\n", err)
+			fmt.Printf("WARNING: Failed to marshal post-dev-steps: %v\n", err)
 		} else {
-			fmt.Printf("DEBUG: Formatted post-dev steps: %s\n", formattedPostDevSteps)
+			var err error
+			formattedPostDevSteps, err = formatTasksYAML(string(tasksBytes))
+			if err != nil {
+				// Log the error but don't fail - use empty string
+				fmt.Printf("WARNING: Failed to format post-dev-steps: %v\n", err)
+			} else {
+				fmt.Printf("DEBUG: Formatted post-dev steps: %s\n", formattedPostDevSteps)
+			}
 		}
 	}
 
 	// Format post-prod steps for pipeline inclusion
 	formattedPostProdSteps := ""
-	if postProdSteps != "" {
-		fmt.Printf("DEBUG: Formatting post-prod steps: %s\n", postProdSteps)
-		var err error
-		formattedPostProdSteps, err = formatTasksYAML(postProdSteps)
+	if len(postProdStepsTasks) > 0 {
+		fmt.Printf("DEBUG: Formatting %d post-prod steps\n", len(postProdStepsTasks))
+		tasksBytes, err := yaml.Marshal(postProdStepsTasks)
 		if err != nil {
-			// Log the error but don't fail - use empty string
-			fmt.Printf("WARNING: Failed to format post-prod-steps: %v\n", err)
+			fmt.Printf("WARNING: Failed to marshal post-prod-steps: %v\n", err)
 		} else {
-			fmt.Printf("DEBUG: Formatted post-prod steps: %s\n", formattedPostProdSteps)
+			var err error
+			formattedPostProdSteps, err = formatTasksYAML(string(tasksBytes))
+			if err != nil {
+				// Log the error but don't fail - use empty string
+				fmt.Printf("WARNING: Failed to format post-prod-steps: %v\n", err)
+			} else {
+				fmt.Printf("DEBUG: Formatted post-prod steps: %s\n", formattedPostProdSteps)
+			}
 		}
 	}
 
