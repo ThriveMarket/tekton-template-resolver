@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"unicode"
 
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tektoncd/pipeline/pkg/resolution/common"
@@ -609,7 +610,12 @@ func (r *templateResource) RefSource() *pipelinev1.RefSource {
 func toCamelCase(paramName string) string {
 	parts := strings.Split(paramName, "-")
 	for i := range parts {
-		parts[i] = strings.Title(parts[i])
+		// Using manual capitalization instead of deprecated strings.Title
+		if len(parts[i]) > 0 {
+			r := []rune(parts[i])
+			r[0] = unicode.ToUpper(r[0])
+			parts[i] = string(r)
+		}
 	}
 	return strings.Join(parts, "")
 }
