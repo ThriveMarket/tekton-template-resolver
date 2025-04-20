@@ -275,9 +275,57 @@ jobs:
           # Wait for rollout to complete
           kubectl rollout status deployment/template-resolver -n tekton-pipelines-resolvers --timeout=2m
 
+      - name: Debug Resolver Pod and add Debug Logs
+        run: |
+          # Debug the resolver pods and Kubernetes environment
+          echo "==== Kubernetes Environment Debug Info ===="
+          echo "All pods in all namespaces:"
+          kubectl get pods -A
+          
+          echo "All resolver pods:"
+          kubectl get pods -n tekton-pipelines-resolvers
+          
+          echo "Detailed info for resolver pods:"
+          kubectl describe pods -n tekton-pipelines-resolvers
+          
+          # Get the template resolver pod name
+          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          
+          if [ -n "$RESOLVER_POD" ]; then
+            echo "Found resolver pod: $RESOLVER_POD"
+            
+            # Add a debug log to the container so we can verify log capture works
+            echo "Adding debug log to container..."
+            # Use kubectl exec to add a debug log marker
+            if kubectl exec -n tekton-pipelines-resolvers "$RESOLVER_POD" -- sh -c 'echo "DEBUG LOG MARKER: This is a test log entry from GitHub Actions" > /tmp/debug.log'; then
+              echo "Successfully added debug log"
+            else
+              echo "Failed to add debug log - pod may not be in ready state"
+            fi
+            
+            # Print all events for the pod
+            echo "Events for pod $RESOLVER_POD:"
+            kubectl get events -n tekton-pipelines-resolvers --field-selector involvedObject.name=$RESOLVER_POD
+          else
+            echo "No resolver pod found! Check deployment:"
+            kubectl get deployments -n tekton-pipelines-resolvers
+          fi
+          
       - name: Validate template resolver with test-request
         run: |
           echo "Running basic template resolver validation with test-request.yaml..."
+          
+          # Expose pod logs via kubectl get
+          echo "==== Resolver Pod Logs (Direct) ===="
+          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o name | head -1)
+          
+          if [ -n "$RESOLVER_POD" ]; then
+            echo "Found resolver pod: $RESOLVER_POD"
+            echo "Direct logs from pod:"
+            kubectl logs -n tekton-pipelines-resolvers $RESOLVER_POD || echo "Failed to get logs with kubectl logs"
+          else
+            echo "No resolver pod found!"
+          fi
           
           # Delete any existing test request
           kubectl delete resolutionrequest test-request --ignore-not-found=true
@@ -324,11 +372,21 @@ jobs:
           else
             echo "❌ No data field found in the resolution request!"
             
-            # Debug resolver logs
+            # Try multiple ways to get logs
+            echo "==== Resolver Logs (Multiple Attempts) ===="
             RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
             if [ -n "$RESOLVER_POD" ]; then
-              echo "Resolver pod logs:"
-              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --tail=100
+              # First try standard logs
+              echo "Method 1 - Standard logs:"
+              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" || echo "Failed to get logs with method 1"
+              
+              # Try getting full pod details
+              echo "Method 2 - Pod Details with kubectl describe:"
+              kubectl describe pod -n tekton-pipelines-resolvers "$RESOLVER_POD"
+              
+              # Try previous logs if container restarted
+              echo "Method 3 - Previous container logs (if restarted):"
+              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --previous || echo "No previous logs available"
             fi
             
             # Check resolution reason
