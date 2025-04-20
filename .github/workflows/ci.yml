@@ -363,6 +363,14 @@ jobs:
               echo "Pod logs:"
               kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --tail=100 || echo "Failed to get logs"
               
+              # Extract the controller container logs specifically
+              echo "Container logs (controller):"
+              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" -c controller --tail=100 || echo "Failed to get controller container logs"
+              
+              # Search logs for specific error patterns
+              echo "Searching logs for error patterns:"
+              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" -c controller | grep -i "error\|failed\|timeout" || echo "No common error patterns found"
+              
               # Also check for timeout errors in the ResolutionRequest
               echo "::endgroup::"
               echo "::group::Resolution Request Status"
@@ -373,6 +381,12 @@ jobs:
                 REQUEST_NAME=${LATEST_REQUEST#*/}
                 echo "Latest ResolutionRequest: $REQUEST_NAME"
                 kubectl get resolutionrequest "$REQUEST_NAME" -o yaml
+                
+                # Check for detailed error message
+                ERROR_MSG=$(kubectl get resolutionrequest "$REQUEST_NAME" -o jsonpath='{.status.conditions[0].message}' 2>/dev/null)
+                if [ -n "$ERROR_MSG" ]; then
+                  echo "Error message: $ERROR_MSG"
+                fi
               else
                 echo "No ResolutionRequest found"
               fi
@@ -381,6 +395,11 @@ jobs:
               echo "All pods in the namespace:"
               kubectl get pods -n tekton-pipelines-resolvers
             fi
+            echo "::endgroup::"
+            
+            # Also check if there were previous ResolutionRequests that might have failed
+            echo "::group::All ResolutionRequests"
+            kubectl get resolutionrequest
             echo "::endgroup::"
             
             # Preserve the original exit code
