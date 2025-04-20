@@ -443,11 +443,28 @@ jobs:
               echo "Container status details:"
               echo "$CONTAINER_STATUS" | jq '.status.containerStatuses'
               
-              # Attempt to get logs by container name - try common container names
-              for CONTAINER in controller app tekton-pipelines-resolver resolvers; do
-                echo "Trying logs for container: $CONTAINER"
-                kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" -c "$CONTAINER" --tail=50 || echo "No container named $CONTAINER"
-              done
+              # First get the main container name
+              echo "Getting main container name..."
+              MAIN_CONTAINER=$(kubectl get pod -n tekton-pipelines-resolvers "$RESOLVER_POD" -o jsonpath='{.spec.containers[0].name}')
+              echo "Main container name is: $MAIN_CONTAINER"
+              
+              # Try to get logs with fallback
+              echo "Attempting to get logs for main container..."
+              if kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" -c "$MAIN_CONTAINER" --tail=100; then
+                echo "Successfully got logs from main container"
+              else  
+                echo "Failed to get logs from main container. Trying direct approach..."
+                kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD"
+              fi
+              
+              # Try to view startup logs specially
+              echo "Attempting to view startup logs..."
+              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" | head -50
+              
+              # Add a runtime debug log using exec
+              echo "Adding runtime debug log..."
+              kubectl exec -n tekton-pipelines-resolvers "$RESOLVER_POD" -- sh -c 'echo "EXEC DEBUG: Logging test from exec at $(date)" >> /tmp/debug.log' || echo "Failed to exec into pod"
+              kubectl exec -n tekton-pipelines-resolvers "$RESOLVER_POD" -- sh -c 'cat /tmp/debug.log 2>/dev/null || echo "No debug log found"' || echo "Failed to read debug log"
               
               # Also check for timeout errors in the ResolutionRequest
               echo "::endgroup::"

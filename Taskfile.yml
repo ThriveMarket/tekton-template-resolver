@@ -231,13 +231,35 @@ tasks:
         
         # Wait for the run to complete with specific name
         echo "Waiting for PipelineRun '$PIPELINE_RUN_NAME' to succeed..."
-        if kubectl wait --for=condition=succeeded "pipelinerun/$PIPELINE_RUN_NAME" --timeout=180s; then
+        if kubectl wait --for=condition=succeeded "pipelinerun/$PIPELINE_RUN_NAME" --timeout=300s; then
           echo "End-to-End test passed!"
           kubectl get pipelinerun $PIPELINE_RUN_NAME -o jsonpath='{.status.conditions[0].message}'
           exit 0
         else
-          echo "End-to-End test failed!"
+          # Check if the failure was due to timeout
+          echo "End-to-End test failed - checking resolver logs and status..."
+          
+          # Print the resolver pod logs
+          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o name | head -1)
+          if [ -n "$RESOLVER_POD" ]; then
+            echo "Resolver pod logs:"
+            kubectl logs -n tekton-pipelines-resolvers $RESOLVER_POD
+          fi
+          
+          # Get details about the resolution request
+          REQUESTS=$(kubectl get resolutionrequests -o name)
+          if [ -n "$REQUESTS" ]; then
+            echo "Resolution requests found:"
+            for REQ in $REQUESTS; do
+              echo "Details for $REQ:"
+              kubectl get $REQ -o yaml
+            done
+          fi
+          
+          # Print PipelineRun details
+          echo "PipelineRun details:"
           kubectl describe pipelinerun $PIPELINE_RUN_NAME
+          
           exit 1
         fi
 

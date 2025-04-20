@@ -54,7 +54,16 @@ spec:
         - name: GIT_SSH_COMMAND
           value: "ssh -i /etc/git-secrets/ssh-privatekey -o StrictHostKeyChecking=no"
         - name: RESOLUTION_TIMEOUT
-          value: "5m"
+          value: "10m"
+        # Add verbose HTTP timeout parameters for debugging
+        - name: HTTP_TIMEOUT
+          value: "60s"
+        - name: HTTP_IDLE_CONN_TIMEOUT
+          value: "90s"
+        - name: HTTP_TLS_HANDSHAKE_TIMEOUT
+          value: "30s"
+        - name: HTTP_EXPECT_CONTINUE_TIMEOUT
+          value: "10s"
         volumeMounts:
         - name: git-ssh-key
           mountPath: /etc/git-secrets
