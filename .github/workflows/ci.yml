@@ -272,11 +272,6 @@ jobs:
           echo "Waiting for all system components to be ready..."
           kubectl get pods -A
           
-          # Make sure there's a longer timeout for resolution
-          echo "Setting long resolution timeout..."
-          kubectl patch deployment template-resolver -n tekton-pipelines-resolvers --type=json \
-            -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env/6/value", "value": "10m"}]'
-          
           # Wait for rollout to complete
           kubectl rollout status deployment/template-resolver -n tekton-pipelines-resolvers --timeout=2m
 
