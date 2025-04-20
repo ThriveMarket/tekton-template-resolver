@@ -359,17 +359,37 @@ jobs:
               echo "Pod status:"
               kubectl get pod -n tekton-pipelines-resolvers "$RESOLVER_POD" -o wide
               
-              # Try to get logs
+              # Try to get logs with enhanced error handling
               echo "Pod logs:"
-              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --tail=100 || echo "Failed to get logs"
+              # Check container names first
+              CONTAINERS=$(kubectl get pod -n tekton-pipelines-resolvers "$RESOLVER_POD" -o jsonpath='{.spec.containers[*].name}')
+              echo "Container names: $CONTAINERS"
               
-              # Extract the controller container logs specifically
-              echo "Container logs (controller):"
-              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" -c controller --tail=100 || echo "Failed to get controller container logs"
+              # Get logs with fallbacks and debug info
+              if ! LOGS=$(kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --tail=100 2>&1); then
+                echo "Error getting logs: $LOGS"
+                # Try all-containers flag
+                echo "Trying --all-containers flag:"
+                kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --all-containers --tail=50 || echo "Still failed to get logs"
+              else
+                echo "$LOGS"
+              fi
               
-              # Search logs for specific error patterns
-              echo "Searching logs for error patterns:"
-              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" -c controller | grep -i "error\|failed\|timeout" || echo "No common error patterns found"
+              # Check if pod is actually ready
+              READY_STATUS=$(kubectl get pod -n tekton-pipelines-resolvers "$RESOLVER_POD" -o jsonpath='{.status.containerStatuses[0].ready}')
+              PHASE=$(kubectl get pod -n tekton-pipelines-resolvers "$RESOLVER_POD" -o jsonpath='{.status.phase}')
+              echo "Pod ready: $READY_STATUS, Pod phase: $PHASE"
+              
+              # Get details about container status
+              CONTAINER_STATUS=$(kubectl get pod -n tekton-pipelines-resolvers "$RESOLVER_POD" -o json)
+              echo "Container status details:"
+              echo "$CONTAINER_STATUS" | jq '.status.containerStatuses'
+              
+              # Attempt to get logs by container name - try common container names
+              for CONTAINER in controller app tekton-pipelines-resolver resolvers; do
+                echo "Trying logs for container: $CONTAINER"
+                kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" -c "$CONTAINER" --tail=50 || echo "No container named $CONTAINER"
+              done
               
               # Also check for timeout errors in the ResolutionRequest
               echo "::endgroup::"
