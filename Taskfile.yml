@@ -71,26 +71,7 @@ tasks:
         else
           echo "Cluster already exists"
         fi
-      - kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
-      - echo "Waiting for Tekton namespace to be created..."
-      - |
-        counter=0
-        while [ $counter -lt 30 ] && ! kubectl get namespace tekton-pipelines >/dev/null 2>&1; do
-          echo "Waiting for tekton-pipelines namespace (attempt $counter)..."
-          sleep 2
-          counter=$((counter + 1))
-        done
-      - echo "Waiting for Tekton controller deployment..."
-      - |
-        counter=0
-        while [ $counter -lt 30 ] && ! kubectl get deployment tekton-pipelines-controller -n tekton-pipelines >/dev/null 2>&1; do
-          echo "Waiting for controller deployment (attempt $counter)..."
-          sleep 2
-          counter=$((counter + 1))
-        done
-      - echo "Waiting for Tekton controller pods to be ready..."
-      - |
-        kubectl wait --for=condition=available deployment/tekton-pipelines-controller -n tekton-pipelines --timeout=180s || echo "Timeout waiting for controller deployment, but continuing..."
+      - task install:tekton
     
   install:tekton:
     desc: Install Tekton Pipelines in the current cluster
