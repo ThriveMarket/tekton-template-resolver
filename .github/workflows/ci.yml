@@ -251,6 +251,75 @@ jobs:
           # Wait for rollout to complete
           kubectl rollout status deployment/template-resolver -n tekton-pipelines-resolvers --timeout=2m
 
+      - name: Validate template resolver with test-request
+        run: |
+          echo "Running basic template resolver validation with test-request.yaml..."
+          
+          # Delete any existing test request
+          kubectl delete resolutionrequest test-request --ignore-not-found=true
+          
+          # Apply the test request
+          kubectl apply -f test-request.yaml
+          
+          # Wait a bit for the resolution to happen (with error handling)
+          echo "Waiting for resolution to complete..."
+          for i in {1..30}; do
+            STATUS=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].status}' 2>/dev/null)
+            if [ "$STATUS" = "True" ]; then
+              echo "✓ Resolution succeeded!"
+              break
+            elif [ "$STATUS" = "False" ]; then
+              echo "✗ Resolution failed."
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          # Check the resolution status
+          REQUEST_STATUS=$(kubectl get resolutionrequest test-request -o yaml)
+          echo "Resolution request status:"
+          echo "$REQUEST_STATUS"
+          
+          # Check if data field exists
+          DATA=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.data}' 2>/dev/null)
+          if [ -n "$DATA" ]; then
+            echo "Rendered template data (first 20 lines):"
+            echo "$DATA" | base64 -d | head -n 20
+            
+            # Verify the data contains template-y output
+            TEMPLATE_OUTPUT=$(echo "$DATA" | base64 -d)
+            if echo "$TEMPLATE_OUTPUT" | grep -q "apiVersion: tekton.dev/v1"; then
+              echo "✓ Template output verified! Contains Tekton Pipeline definition."
+            else
+              echo "✗ Template output doesn't look correct."
+              echo "Full output:"
+              echo "$TEMPLATE_OUTPUT"
+              exit 1
+            fi
+          else
+            echo "❌ No data field found in the resolution request!"
+            
+            # Debug resolver logs
+            RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+            if [ -n "$RESOLVER_POD" ]; then
+              echo "Resolver pod logs:"
+              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --tail=100
+            fi
+            
+            # Check resolution reason
+            REASON=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].reason}' 2>/dev/null)
+            MESSAGE=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].message}' 2>/dev/null)
+            echo "Reason: $REASON"
+            echo "Message: $MESSAGE"
+            
+            # If timeout, we should fail
+            if [[ "$MESSAGE" == *"timeout"* ]]; then
+              echo "❌ Resolution timed out!"
+              exit 1
+            fi
+          fi
+
       - name: Run integration tests
         run: |
           # Run the e2e test and capture the exit code
