@@ -188,4 +188,36 @@ jobs:
           kubectl apply -f config/
 
       - name: Run integration tests
-        run: task test:e2e
+        run: |
+          # Run the e2e test and capture the exit code
+          task test:e2e || {
+            EXIT_CODE=$?
+            
+            # Dump the resolver logs regardless of failure reason
+            echo "::group::Resolver Pod Logs (Last 100 lines)"
+            echo "Tests failed with exit code $EXIT_CODE - Dumping resolver pod logs:"
+            RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+            if [ -n "$RESOLVER_POD" ]; then
+              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --tail=100
+              
+              # Also check for timeout errors in the ResolutionRequest
+              echo -e "\n::group::Resolution Request Status"
+              PIPELINE_RUN_NAME="example-app-deployment"
+              echo "Checking ResolutionRequest status for PipelineRun $PIPELINE_RUN_NAME..."
+              LATEST_REQUEST=$(kubectl get resolutionrequest --sort-by=.metadata.creationTimestamp -o name 2>/dev/null | tail -n 1)
+              if [ -n "$LATEST_REQUEST" ]; then
+                REQUEST_NAME=${LATEST_REQUEST#*/}
+                echo "Latest ResolutionRequest: $REQUEST_NAME"
+                kubectl get resolutionrequest "$REQUEST_NAME" -o yaml
+              else
+                echo "No ResolutionRequest found"
+              fi
+              echo "::endgroup::"
+            else
+              echo "No resolver pod found in the tekton-pipelines-resolvers namespace"
+            fi
+            echo "::endgroup::"
+            
+            # Preserve the original exit code
+            exit $EXIT_CODE
+          }
