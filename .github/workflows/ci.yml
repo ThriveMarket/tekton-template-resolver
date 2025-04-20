@@ -122,31 +122,26 @@ jobs:
           chmod +x ./ko
           sudo mv ko /usr/local/bin/
 
-      - name: Create kind config file
-        run: |
-          cat <<EOF > kind-config.yaml
-          kind: Cluster
-          apiVersion: kind.x-k8s.io/v1alpha4
-          nodes:
-          - role: control-plane
-            kubeadmConfigPatches:
-            - |
-              kind: InitConfiguration
-              nodeRegistration:
-                kubeletExtraArgs:
-                  node-labels: "ingress-ready=true"
-            extraPortMappings:
-            - containerPort: 80
-              hostPort: 80
-            - containerPort: 443
-              hostPort: 443
-          EOF
-
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
         with:
           cluster_name: kind
-          config_file: kind-config.yaml
+          config: |
+            kind: Cluster
+            apiVersion: kind.x-k8s.io/v1alpha4
+            nodes:
+            - role: control-plane
+              kubeadmConfigPatches:
+              - |
+                kind: InitConfiguration
+                nodeRegistration:
+                  kubeletExtraArgs:
+                    node-labels: "ingress-ready=true"
+              extraPortMappings:
+              - containerPort: 80
+                hostPort: 80
+              - containerPort: 443
+                hostPort: 443
 
       - name: Install Tekton Pipelines
         run: |
@@ -167,25 +162,94 @@ jobs:
 
       - name: Build and deploy resolver
         run: |
+          # Debug image references before starting
+          echo "Debugging image references..."
+          cat config/deployment.yaml
+          
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             # Use the container we just built and pushed
+            echo "Using GitHub Container Registry image"
             sed -i "s|image:.*|image: ghcr.io/thrivemarket/template-resolver:${{ github.sha }}|g" config/deployment.yaml
           else
-            # For PRs, build locally in kind using special registry name
-            # The kind-action sets up the registry as 'kind-registry:5000'
-            export KO_DOCKER_REPO=kind.local
-            ko build --local -B thrivemarket.com/template-resolver/cmd/template-resolver
-
-            # Load the image directly into kind
-            kind load docker-image kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:latest --name=kind
+            # For PRs, build locally in kind using ko
+            echo "Building local image with ko"
+            export KO_DOCKER_REPO=ko.local
             
-            # Update the deployment file with the local image
-            sed -i "s|image:.*|image: kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:latest|g" config/deployment.yaml
+            # Build the image
+            IMAGE_REF=$(ko build --local -B thrivemarket.com/template-resolver/cmd/template-resolver)
+            echo "Built image: $IMAGE_REF"
+            
+            # Extract the exact image name that ko generated
+            IMAGE_NAME=$(echo "$IMAGE_REF" | sed -e 's/.*\///')
+            echo "Extracted image name: $IMAGE_NAME"
+            
+            # Load the image directly into kind
+            echo "Loading image into kind cluster"
+            kind load docker-image "$IMAGE_REF" --name=kind
+            
+            # Update the deployment file with the local image (using the dynamically generated name)
+            sed -i "s|image:.*|image: $IMAGE_REF|g" config/deployment.yaml
           fi
+          
+          # Show the updated deployment file
+          echo "Updated deployment file:"
+          cat config/deployment.yaml
           
           # Apply with namespace check
           kubectl create namespace tekton-pipelines-resolvers --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -f config/
+          
+          # Verify pod status
+          echo "Checking pod status:"
+          kubectl get pods -n tekton-pipelines-resolvers
+          sleep 5
+          kubectl get pods -n tekton-pipelines-resolvers
+
+      - name: Make sure resolver pod is running
+        run: |
+          # Check if resolver pods are running correctly
+          echo "Checking resolver pod status:"
+          kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o wide
+          
+          # Debug any pod issues
+          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          if [ -n "$RESOLVER_POD" ]; then
+            echo "Checking pod events:"
+            kubectl describe pod -n tekton-pipelines-resolvers "$RESOLVER_POD"
+            
+            # Check if pod is failing to pull image
+            CONTAINER_STATUS=$(kubectl get pod -n tekton-pipelines-resolvers "$RESOLVER_POD" -o jsonpath='{.status.containerStatuses[0].state.waiting.reason}' 2>/dev/null)
+            if [ "$CONTAINER_STATUS" = "ImagePullBackOff" ] || [ "$CONTAINER_STATUS" = "ErrImagePull" ]; then
+              echo "Image pull issue detected. Retrying with a local build..."
+              
+              # Rebuild with ko and try again
+              export KO_DOCKER_REPO=ko.local
+              IMAGE_REF=$(ko build --local -B thrivemarket.com/template-resolver/cmd/template-resolver)
+              echo "Built image: $IMAGE_REF"
+              
+              # Load into kind and update deployment
+              kind load docker-image "$IMAGE_REF" --name=kind
+              kubectl set image deployment/template-resolver -n tekton-pipelines-resolvers controller="$IMAGE_REF"
+              
+              # Wait for pod to start
+              echo "Waiting for resolver pod to become ready..."
+              kubectl rollout status deployment/template-resolver -n tekton-pipelines-resolvers --timeout=2m
+            fi
+          else
+            echo "No resolver pods found!"
+          fi
+          
+          # Wait for all tekton system components to be ready
+          echo "Waiting for all system components to be ready..."
+          kubectl get pods -A
+          
+          # Make sure there's a longer timeout for resolution
+          echo "Setting long resolution timeout..."
+          kubectl patch deployment template-resolver -n tekton-pipelines-resolvers --type=json \
+            -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env/6/value", "value": "10m"}]'
+          
+          # Wait for rollout to complete
+          kubectl rollout status deployment/template-resolver -n tekton-pipelines-resolvers --timeout=2m
 
       - name: Run integration tests
         run: |
@@ -198,10 +262,17 @@ jobs:
             echo "Tests failed with exit code $EXIT_CODE - Dumping resolver pod logs:"
             RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
             if [ -n "$RESOLVER_POD" ]; then
-              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --tail=100
+              # Check pod status first
+              echo "Pod status:"
+              kubectl get pod -n tekton-pipelines-resolvers "$RESOLVER_POD" -o wide
+              
+              # Try to get logs
+              echo "Pod logs:"
+              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --tail=100 || echo "Failed to get logs"
               
               # Also check for timeout errors in the ResolutionRequest
-              echo -e "\n::group::Resolution Request Status"
+              echo "::endgroup::"
+              echo "::group::Resolution Request Status"
               PIPELINE_RUN_NAME="example-app-deployment"
               echo "Checking ResolutionRequest status for PipelineRun $PIPELINE_RUN_NAME..."
               LATEST_REQUEST=$(kubectl get resolutionrequest --sort-by=.metadata.creationTimestamp -o name 2>/dev/null | tail -n 1)
@@ -212,9 +283,10 @@ jobs:
               else
                 echo "No ResolutionRequest found"
               fi
-              echo "::endgroup::"
             else
               echo "No resolver pod found in the tekton-pipelines-resolvers namespace"
+              echo "All pods in the namespace:"
+              kubectl get pods -n tekton-pipelines-resolvers
             fi
             echo "::endgroup::"
             
