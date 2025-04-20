@@ -94,8 +94,8 @@ jobs:
           file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ghcr.io/$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')/template-resolver:latest
-            ghcr.io/$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')/template-resolver:${{ github.sha }}
+            ghcr.io/thrivemarket/template-resolver:latest
+            ghcr.io/thrivemarket/template-resolver:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -135,7 +135,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             # Use the container we just built and pushed
-            sed -i "s|image:.*|image: ghcr.io/$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')/template-resolver:${{ github.sha }}|g" config/deployment.yaml
+            sed -i "s|image:.*|image: ghcr.io/thrivemarket/template-resolver:${{ github.sha }}|g" config/deployment.yaml
           else
             # For PRs, build locally in kind
             export KO_DOCKER_REPO=kind.local
