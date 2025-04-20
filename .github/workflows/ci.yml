@@ -122,26 +122,31 @@ jobs:
           chmod +x ./ko
           sudo mv ko /usr/local/bin/
 
+      - name: Create kind config file
+        run: |
+          cat <<EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            kubeadmConfigPatches:
+            - |
+              kind: InitConfiguration
+              nodeRegistration:
+                kubeletExtraArgs:
+                  node-labels: "ingress-ready=true"
+            extraPortMappings:
+            - containerPort: 80
+              hostPort: 80
+            - containerPort: 443
+              hostPort: 443
+          EOF
+
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
         with:
           cluster_name: kind
-          config: |
-            kind: Cluster
-            apiVersion: kind.x-k8s.io/v1alpha4
-            nodes:
-            - role: control-plane
-              kubeadmConfigPatches:
-              - |
-                kind: InitConfiguration
-                nodeRegistration:
-                  kubeletExtraArgs:
-                    node-labels: "ingress-ready=true"
-              extraPortMappings:
-              - containerPort: 80
-                hostPort: 80
-              - containerPort: 443
-                hostPort: 443
+          config_file: kind-config.yaml
 
       - name: Install Tekton Pipelines
         run: |
