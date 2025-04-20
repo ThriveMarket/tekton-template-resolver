@@ -250,6 +250,17 @@ The repository also includes helper scripts to simplify specific operations:
 - Parameterized templates with default values
 - Improved error reporting for template rendering issues
 
+## TODOs Before Open-Sourcing
+
+These tasks should be completed before making the repository public:
+
+- [ ] Move CI workflow to use ghcr.io images consistently instead of local images
+- [ ] Verify all configuration is appropriately externalized
+- [ ] Complete comprehensive test coverage
+- [ ] Finalize documentation with installation instructions for various environments
+- [ ] Create example templates repository 
+- [ ] Set up standard issue templates and contribution guidelines
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
