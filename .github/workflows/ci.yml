@@ -204,30 +204,21 @@ jobs:
           echo "Debugging image references..."
           cat config/deployment.yaml
           
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            # Use the container we just built and pushed
-            echo "Using GitHub Container Registry image"
-            sed -i "s|image:.*|image: ghcr.io/thrivemarket/template-resolver:${{ github.sha }}|g" config/deployment.yaml
-          else
-            # For PRs, build locally in kind using ko
-            echo "Building local image with ko"
-            export KO_DOCKER_REPO=ko.local
-            
-            # Build the image
-            IMAGE_REF=$(ko build --local -B thrivemarket.com/template-resolver/cmd/template-resolver)
-            echo "Built image: $IMAGE_REF"
-            
-            # Extract the exact image name that ko generated
-            IMAGE_NAME=$(echo "$IMAGE_REF" | sed -e 's/.*\///')
-            echo "Extracted image name: $IMAGE_NAME"
-            
-            # Load the image directly into kind
-            echo "Loading image into kind cluster"
-            kind load docker-image "$IMAGE_REF" --name=kind
-            
-            # Update the deployment file with the local image (using the dynamically generated name)
-            sed -i "s|image:.*|image: $IMAGE_REF|g" config/deployment.yaml
-          fi
+          # Always build locally for all CI runs (both PRs and pushes to main)
+          # This ensures we don't need to pull from ghcr.io which requires auth
+          echo "Building local image with ko"
+          export KO_DOCKER_REPO=ko.local
+          
+          # Build the image
+          IMAGE_REF=$(ko build --local -B thrivemarket.com/template-resolver/cmd/template-resolver)
+          echo "Built image: $IMAGE_REF"
+          
+          # Load the image directly into kind
+          echo "Loading image into kind cluster"
+          kind load docker-image "$IMAGE_REF" --name=kind
+          
+          # Update the deployment file with the local image
+          sed -i "s|image:.*|image: $IMAGE_REF|g" config/deployment.yaml
           
           # Show the updated deployment file
           echo "Updated deployment file:"
