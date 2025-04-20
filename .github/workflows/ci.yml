@@ -14,9 +14,37 @@ permissions:
   actions: read
 
 jobs:
+  check-go-changes:
+    name: Check for Go changes
+    runs-on: ubuntu-latest
+    outputs:
+      go-changed: ${{ steps.filter.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Go file changes
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.golangci.yml'
+              - 'vendor/**'
+      
+      - name: Show change status
+        run: |
+          echo "Go files changed: ${{ steps.filter.outputs.go }}"
+
   lint:
     name: Code Linting
     runs-on: ubuntu-latest
+    needs: check-go-changes
+    if: needs.check-go-changes.outputs.go-changed == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -35,6 +63,8 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    needs: check-go-changes
+    if: needs.check-go-changes.outputs.go-changed == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -59,27 +89,49 @@ jobs:
   build:
     name: Build Container
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [check-go-changes, lint, test]
+    if: always() # Run even if lint/test are skipped or failed
     steps:
       - uses: actions/checkout@v4
 
+      # Skip the build if required steps failed (but not if they were skipped)
+      - name: Check previous step results
+        id: check
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ]; then
+            echo "Previous steps failed, skipping build"
+            exit 1
+          fi
+          
+          # Check if we should build based on changes
+          if [ "${{ needs.check-go-changes.outputs.go-changed }}" != "true" ]; then
+            echo "No Go changes detected, using existing container image"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Go changes detected, building new container image"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Go
+        if: steps.check.outputs.skip != 'true'
         uses: actions/setup-go@v4
         with:
           go-version: '1.24'
           cache: true
 
       - name: Install ko
+        if: steps.check.outputs.skip != 'true'
         run: |
           curl -L https://github.com/google/ko/releases/download/v0.15.1/ko_0.15.1_Linux_x86_64.tar.gz | tar xzf - ko
           chmod +x ./ko
           sudo mv ko /usr/local/bin/
 
       - name: Set up Docker Buildx
+        if: steps.check.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -87,6 +139,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push container image
+        if: steps.check.outputs.skip != 'true'
         id: docker_build
         uses: docker/build-push-action@v5
         with:
@@ -102,7 +155,8 @@ jobs:
   e2e-test:
     name: End-to-End Tests
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [check-go-changes, build]
+    if: always() && !contains(needs.*.result, 'failure')
     steps:
       - uses: actions/checkout@v4
 
