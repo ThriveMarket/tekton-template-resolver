@@ -127,11 +127,12 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	
 	// First, extract required parameters
 	for _, param := range params {
-		if param.Name == RepositoryParam {
+		switch param.Name {
+		case RepositoryParam:
 			repository = param.Value.StringVal
 			debugf("Repository: %s", repository)
 			templateData[RepositoryParam] = repository
-		} else if param.Name == PathParam {
+		case PathParam:
 			path = param.Value.StringVal
 			debugf("Path: %s", path)
 			templateData[PathParam] = path
@@ -342,7 +343,9 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 
 		// If we got a 404, try without the filename (for single-file gists)
 		if resp.StatusCode == http.StatusNotFound {
-			resp.Body.Close() // Close this response before making another request
+			if err := resp.Body.Close(); err != nil { // Close this response before making another request
+				return "", fmt.Errorf("failed to close response body: %w", err)
+			}
 
 			// Try without filename for single-file gists
 			rawURL = fmt.Sprintf("https://gist.githubusercontent.com/%s/%s/raw/", user, gistID)
@@ -352,7 +355,11 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 			}
 		}
 
-		defer resp.Body.Close()
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
+				err = fmt.Errorf("failed to close response body: %w", closeErr)
+			}
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("HTTP error: %s", resp.Status)
@@ -384,7 +391,11 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 		if err != nil {
 			return "", err
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
+				err = fmt.Errorf("failed to close response body: %w", closeErr)
+			}
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("HTTP error: %s", resp.Status)
@@ -405,7 +416,11 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if removeErr := os.RemoveAll(tempDir); removeErr != nil && err == nil {
+			err = fmt.Errorf("failed to clean up temp directory: %w", removeErr)
+		}
+	}()
 
 	// Setup git command with output capturing
 	cmd := exec.Command("git", "clone", "--depth=1", repoURL, tempDir)
