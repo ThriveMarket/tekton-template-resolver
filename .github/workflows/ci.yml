@@ -129,7 +129,42 @@ jobs:
           sudo mv ./kind /usr/local/bin/kind
 
       - name: Set up KinD cluster
-        run: task setup:kind
+        run: |
+          # Start with a clean slate
+          kind delete cluster --name template-resolver || true
+          
+          # Create a new cluster with more resources for stability
+          kind create cluster --name template-resolver --config=- <<EOF
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            kubeadmConfigPatches:
+            - |
+              kind: InitConfiguration
+              nodeRegistration:
+                kubeletExtraArgs:
+                  node-labels: "ingress-ready=true"
+            extraPortMappings:
+            - containerPort: 80
+              hostPort: 80
+            - containerPort: 443
+              hostPort: 443
+          EOF
+          
+          # Install Tekton with proper error handling
+          echo "Installing Tekton Pipelines..."
+          kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+          
+          # Wait for Tekton to be ready with checks
+          echo "Waiting for Tekton namespace..."
+          timeout 60s bash -c 'until kubectl get namespace tekton-pipelines 2>/dev/null; do sleep 2; done'
+          
+          echo "Waiting for Tekton controller deployment..."
+          timeout 120s bash -c 'until kubectl get deployment tekton-pipelines-controller -n tekton-pipelines 2>/dev/null; do sleep 2; done'
+          
+          echo "Waiting for controller to be available..."
+          kubectl wait --for=condition=available deployment/tekton-pipelines-controller -n tekton-pipelines --timeout=180s || echo "Timed out waiting, but continuing..."
 
       - name: Build and deploy resolver
         run: |

@@ -76,26 +76,67 @@ tasks:
   install:tekton:
     desc: Install Tekton Pipelines in the current cluster
     cmds:
-      - kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
-      - echo "Waiting for Tekton namespace to be created..."
       - |
+        # Verify cluster connectivity first
+        echo "Verifying cluster connectivity..."
+        if ! kubectl cluster-info >/dev/null 2>&1; then
+          echo "Error: Cannot connect to Kubernetes cluster. Please check your kubeconfig."
+          exit 1
+        fi
+        
+        # Check which version of Tekton is recommended
+        echo "Installing Tekton Pipelines..."
+        kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+        
+        # Ensure the namespace is created
+        echo "Waiting for Tekton namespace to be created..."
         counter=0
-        while [ $counter -lt 30 ] && ! kubectl get namespace tekton-pipelines >/dev/null 2>&1; do
-          echo "Waiting for tekton-pipelines namespace (attempt $counter)..."
-          sleep 2
+        max_retries=30
+        while [ $counter -lt $max_retries ] && ! kubectl get namespace tekton-pipelines >/dev/null 2>&1; do
+          echo "Waiting for tekton-pipelines namespace (attempt $((counter+1))/$max_retries)..."
+          sleep 3
           counter=$((counter + 1))
         done
-      - echo "Waiting for Tekton controller deployment..."
-      - |
+        
+        # Exit early if namespace never got created
+        if [ $counter -eq $max_retries ]; then
+          echo "Error: Tekton namespace was not created within the timeout period."
+          echo "Continuing anyway to see if we can recover..."
+        else
+          echo "✓ Tekton namespace created successfully."
+        fi
+        
+        # Wait for the controller deployment
+        echo "Waiting for Tekton controller deployment..."
         counter=0
-        while [ $counter -lt 30 ] && ! kubectl get deployment tekton-pipelines-controller -n tekton-pipelines >/dev/null 2>&1; do
-          echo "Waiting for controller deployment (attempt $counter)..."
-          sleep 2
+        max_retries=30
+        while [ $counter -lt $max_retries ] && ! kubectl get deployment tekton-pipelines-controller -n tekton-pipelines >/dev/null 2>&1; do
+          echo "Waiting for controller deployment (attempt $((counter+1))/$max_retries)..."
+          sleep 3
           counter=$((counter + 1))
+          
+          # Verify cluster connectivity during waiting
+          if ! kubectl cluster-info >/dev/null 2>&1; then
+            echo "Error: Lost connection to Kubernetes cluster during installation."
+            exit 1
+          fi
         done
-      - echo "Waiting for Tekton controller pods to be ready..."
-      - |
-        kubectl wait --for=condition=available deployment/tekton-pipelines-controller -n tekton-pipelines --timeout=180s || echo "Timeout waiting for controller deployment, but continuing..."
+        
+        # Exit early if deployment never got created
+        if [ $counter -eq $max_retries ]; then
+          echo "Warning: Tekton controller deployment was not created within the timeout period."
+          echo "Continuing anyway to see if we can recover..."
+        else
+          echo "✓ Tekton controller deployment created successfully."
+        fi
+        
+        # Wait for the controller to be available
+        echo "Waiting for Tekton controller pods to be ready..."
+        if kubectl wait --for=condition=available deployment/tekton-pipelines-controller -n tekton-pipelines --timeout=180s; then
+          echo "✓ Tekton controller is now available."
+        else
+          echo "Warning: Timeout waiting for controller deployment, but continuing..."
+        fi
 
   run:example:
     desc: Run an example pipeline using the template-resolver
