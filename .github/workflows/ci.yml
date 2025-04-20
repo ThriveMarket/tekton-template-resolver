@@ -122,49 +122,43 @@ jobs:
           chmod +x ./ko
           sudo mv ko /usr/local/bin/
 
-      - name: Install kind
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: kind
+          config: |
+            kind: Cluster
+            apiVersion: kind.x-k8s.io/v1alpha4
+            nodes:
+            - role: control-plane
+              kubeadmConfigPatches:
+              - |
+                kind: InitConfiguration
+                nodeRegistration:
+                  kubeletExtraArgs:
+                    node-labels: "ingress-ready=true"
+              extraPortMappings:
+              - containerPort: 80
+                hostPort: 80
+              - containerPort: 443
+                hostPort: 443
 
-      - name: Set up KinD cluster
+      - name: Install Tekton Pipelines
         run: |
-          # Start with a clean slate
-          kind delete cluster --name template-resolver || true
-          
-          # Create a new cluster with more resources for stability
-          kind create cluster --name template-resolver --config=- <<EOF
-          kind: Cluster
-          apiVersion: kind.x-k8s.io/v1alpha4
-          nodes:
-          - role: control-plane
-            kubeadmConfigPatches:
-            - |
-              kind: InitConfiguration
-              nodeRegistration:
-                kubeletExtraArgs:
-                  node-labels: "ingress-ready=true"
-            extraPortMappings:
-            - containerPort: 80
-              hostPort: 80
-            - containerPort: 443
-              hostPort: 443
-          EOF
-          
           # Install Tekton with proper error handling
           echo "Installing Tekton Pipelines..."
           kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
           
           # Wait for Tekton to be ready with checks
           echo "Waiting for Tekton namespace..."
-          timeout 60s bash -c 'until kubectl get namespace tekton-pipelines 2>/dev/null; do sleep 2; done'
+          kubectl wait --for=condition=established --timeout=60s crd/pipelineruns.tekton.dev || echo "Timed out waiting for CRD, but continuing..."
           
-          echo "Waiting for Tekton controller deployment..."
-          timeout 120s bash -c 'until kubectl get deployment tekton-pipelines-controller -n tekton-pipelines 2>/dev/null; do sleep 2; done'
+          echo "Waiting for Tekton controllers..."
+          kubectl -n tekton-pipelines wait --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=180s || echo "Timed out waiting for controller, but continuing..."
           
-          echo "Waiting for controller to be available..."
-          kubectl wait --for=condition=available deployment/tekton-pipelines-controller -n tekton-pipelines --timeout=180s || echo "Timed out waiting, but continuing..."
+          # Wait for webhook to avoid race conditions
+          echo "Waiting for Tekton webhook..."
+          kubectl -n tekton-pipelines wait --for=condition=ready pod --selector=app.kubernetes.io/component=webhook --timeout=180s || echo "Timed out waiting for webhook, but continuing..."
 
       - name: Build and deploy resolver
         run: |
@@ -172,10 +166,20 @@ jobs:
             # Use the container we just built and pushed
             sed -i "s|image:.*|image: ghcr.io/thrivemarket/template-resolver:${{ github.sha }}|g" config/deployment.yaml
           else
-            # For PRs, build locally in kind
+            # For PRs, build locally in kind using special registry name
+            # The kind-action sets up the registry as 'kind-registry:5000'
             export KO_DOCKER_REPO=kind.local
-            task container:build
+            ko build --local -B thrivemarket.com/template-resolver/cmd/template-resolver
+
+            # Load the image directly into kind
+            kind load docker-image kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:latest --name=kind
+            
+            # Update the deployment file with the local image
+            sed -i "s|image:.*|image: kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:latest|g" config/deployment.yaml
           fi
+          
+          # Apply with namespace check
+          kubectl create namespace tekton-pipelines-resolvers --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -f config/
 
       - name: Run integration tests
