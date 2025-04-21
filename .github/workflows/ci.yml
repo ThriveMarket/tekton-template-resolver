@@ -183,20 +183,7 @@ jobs:
 
       - name: Install Tekton Pipelines
         run: |
-          # Install Tekton with proper error handling
-          echo "Installing Tekton Pipelines..."
-          kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
-          
-          # Wait for Tekton to be ready with checks
-          echo "Waiting for Tekton namespace..."
-          kubectl wait --for=condition=established --timeout=60s crd/pipelineruns.tekton.dev || echo "Timed out waiting for CRD, but continuing..."
-          
-          echo "Waiting for Tekton controllers..."
-          kubectl -n tekton-pipelines wait --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=180s || echo "Timed out waiting for controller, but continuing..."
-          
-          # Wait for webhook to avoid race conditions
-          echo "Waiting for Tekton webhook..."
-          kubectl -n tekton-pipelines wait --for=condition=ready pod --selector=app.kubernetes.io/component=webhook --timeout=180s || echo "Timed out waiting for webhook, but continuing..."
+          task install:tekton
 
       - name: Build and deploy resolver
         run: |
@@ -313,97 +300,11 @@ jobs:
           
       - name: Validate template resolver with test-request
         run: |
-          echo "Running basic template resolver validation with test-request.yaml..."
-          
-          # Expose pod logs via kubectl get
-          echo "==== Resolver Pod Logs (Direct) ===="
-          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o name | head -1)
-          
-          if [ -n "$RESOLVER_POD" ]; then
-            echo "Found resolver pod: $RESOLVER_POD"
-            echo "Direct logs from pod:"
-            kubectl logs -n tekton-pipelines-resolvers $RESOLVER_POD || echo "Failed to get logs with kubectl logs"
-          else
-            echo "No resolver pod found!"
-          fi
-          
-          # Delete any existing test request
-          kubectl delete resolutionrequest test-request --ignore-not-found=true
-          
-          # Apply the test request
-          kubectl apply -f test-request.yaml
-          
-          # Wait a bit for the resolution to happen (with error handling)
-          echo "Waiting for resolution to complete..."
-          for i in {1..30}; do
-            STATUS=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].status}' 2>/dev/null)
-            if [ "$STATUS" = "True" ]; then
-              echo "✓ Resolution succeeded!"
-              break
-            elif [ "$STATUS" = "False" ]; then
-              echo "✗ Resolution failed."
-              break
-            fi
-            echo "Waiting... ($i/30)"
-            sleep 2
-          done
-          
-          # Check the resolution status
-          REQUEST_STATUS=$(kubectl get resolutionrequest test-request -o yaml)
-          echo "Resolution request status:"
-          echo "$REQUEST_STATUS"
-          
-          # Check if data field exists
-          DATA=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.data}' 2>/dev/null)
-          if [ -n "$DATA" ]; then
-            echo "Rendered template data (first 20 lines):"
-            echo "$DATA" | base64 -d | head -n 20
-            
-            # Verify the data contains template-y output
-            TEMPLATE_OUTPUT=$(echo "$DATA" | base64 -d)
-            if echo "$TEMPLATE_OUTPUT" | grep -q "apiVersion: tekton.dev/v1"; then
-              echo "✓ Template output verified! Contains Tekton Pipeline definition."
-            else
-              echo "✗ Template output doesn't look correct."
-              echo "Full output:"
-              echo "$TEMPLATE_OUTPUT"
-              exit 1
-            fi
-          else
-            echo "❌ No data field found in the resolution request!"
-            
-            # Try multiple ways to get logs
-            echo "==== Resolver Logs (Multiple Attempts) ===="
-            RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-            if [ -n "$RESOLVER_POD" ]; then
-              # First try standard logs
-              echo "Method 1 - Standard logs:"
-              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" || echo "Failed to get logs with method 1"
-              
-              # Try getting full pod details
-              echo "Method 2 - Pod Details with kubectl describe:"
-              kubectl describe pod -n tekton-pipelines-resolvers "$RESOLVER_POD"
-              
-              # Try previous logs if container restarted
-              echo "Method 3 - Previous container logs (if restarted):"
-              kubectl logs -n tekton-pipelines-resolvers "$RESOLVER_POD" --previous || echo "No previous logs available"
-            fi
-            
-            # Check resolution reason
-            REASON=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].reason}' 2>/dev/null)
-            MESSAGE=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].message}' 2>/dev/null)
-            echo "Reason: $REASON"
-            echo "Message: $MESSAGE"
-            
-            # If timeout, we should fail
-            if [[ "$MESSAGE" == *"timeout"* ]]; then
-              echo "❌ Resolution timed out!"
-              exit 1
-            fi
-          fi
+          task run:request
 
       - name: Run integration tests
         run: |
+          set -x
           # Run the e2e test and capture the exit code
           task test:e2e || {
             EXIT_CODE=$?
