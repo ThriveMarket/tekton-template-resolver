@@ -182,8 +182,7 @@ jobs:
           cluster_name: kind
 
       - name: Install Tekton Pipelines
-        run: |
-          task install:tekton
+        run: task install:tekton
 
       - name: Build and deploy resolver
         run: |
@@ -299,8 +298,7 @@ jobs:
           fi
           
       - name: Validate template resolver with test-request
-        run: |
-          task run:request
+        run: task run:request
 
       - name: Run integration tests
         run: |
