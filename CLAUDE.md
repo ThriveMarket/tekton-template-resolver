@@ -19,9 +19,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Lint: `golangci-lint run`
 - Build with race detection: `go build -race ./cmd/template-resolver`
 - Build and deploy to kind: `ko build thrivemarket.com/template-resolver/cmd/template-resolver`
-- Local testing: `./scripts/test-locally.sh`
-- Update template gist: `./scripts/update-gist.sh`
-- Run test pipeline: `./scripts/run-pipeline.sh`
+- Local testing: `task run:pipelinerun`
+- Update template gist: `task update`
+- Run test pipeline: `task run:example`
 
 ## Test Coverage
 To generate and view code coverage as an HTML file:

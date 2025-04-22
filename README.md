@@ -29,9 +29,9 @@ To use the Template Resolver in your Tekton pipeline, create a ResolutionRequest
 In addition to the required parameters, you can include any number of custom parameters. The resolver has the following special handling for parameters:
 
 1. **Task Parameters**: Parameters containing Tekton tasks receive special handling:
-   - Task YAML is automatically formatted for proper inclusion in the pipeline
-   - Task names are extracted and made available as `<CamelCaseParamName>Names`
-   - The last task name is available as `<CamelCaseParamName>Name`
+   - Task YAML is automatically injected into the pipeline with correct indentation and structure
+   - Task names are extracted and made available as `<CamelCaseParamName>Names` (useful for defining dependencies)
+   - The last task name is available as `<CamelCaseParamName>Name` (convenient for creating linear sequences where subsequent tasks depend on the final custom task)
 
 2. **Regular Parameters**: Other parameters are passed through directly to the template
 
@@ -231,21 +231,6 @@ task test:coverage
 This will create an interactive HTML report highlighting covered and uncovered code in different colors, making it easy to identify areas that need additional tests.
 
 For more detailed information about available commands, examine the Taskfile.yml in the repository root.
-
-### Helper Scripts
-
-The repository also includes helper scripts to simplify specific operations:
-
-```bash
-# Test the resolver locally
-./scripts/test-locally.sh
-
-# Update a GitHub Gist with the latest template
-./scripts/update-gist.sh
-
-# Execute and monitor a test pipeline
-./scripts/run-pipeline.sh
-```
 
 ## Features
 
