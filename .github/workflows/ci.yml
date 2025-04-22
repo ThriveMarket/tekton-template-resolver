@@ -302,13 +302,16 @@ jobs:
 
       - name: Run integration tests
         run: |
-          set -x
           # Run the e2e test and capture the exit code
           task test:e2e || {
             EXIT_CODE=$?
-            
+
+            set -x
             # Dump the resolver logs regardless of failure reason
             echo "::group::Resolver Pod Logs (Last 100 lines)"
+            kubectl get pods -n tekton-pipelines-resolvers -o wide
+            kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver
+            kubectl describe pods -n tekton-pipelines-resolvers -l app=template-resolver
             echo "Tests failed with exit code $EXIT_CODE - Dumping resolver pod logs:"
             RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
             if [ -n "$RESOLVER_POD" ]; then
