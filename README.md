@@ -130,6 +130,21 @@ Deploy the Template Resolver to your Kubernetes cluster:
 ko apply -f config/
 ```
 
+### Configuration Options
+
+The Template Resolver can be configured using environment variables in the deployment:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DEBUG` | Enable verbose debug logging | `false` |
+| `HTTP_TIMEOUT` | HTTP request timeout for template fetching | `30s` |
+| `RESOLUTION_TIMEOUT` | Overall timeout for template resolution | `60s` |
+| `GIT_CLONE_DEPTH` | Depth for Git clone operations | `1` |
+| `GIT_DEFAULT_BRANCH` | Default branch to use for GitHub templates | `main` |
+| `GIT_SSH_COMMAND` | SSH command for Git operations (for private repos) | Set in deployment |
+
+To customize these settings, edit the environment variables in `config/deployment.yaml` before deploying.
+
 ### Private Git Repository Access
 
 To use templates from private Git repositories, you need to create an SSH deploy key:
@@ -254,11 +269,10 @@ The repository also includes helper scripts to simplify specific operations:
 
 These tasks should be completed before making the repository public:
 
-- [ ] Move CI workflow to use ghcr.io images consistently instead of local images
-- [ ] Verify all configuration is appropriately externalized
-- [ ] Complete comprehensive test coverage
+- [ ] Move CI workflow to use ghcr.io images consistently instead of local images (will be done after open-sourcing)
+- [x] Verify all configuration is appropriately externalized
+- [ ] Complete comprehensive test coverage (in progress, current coverage: ~59%)
 - [ ] Finalize documentation with installation instructions for various environments
-- [ ] Create example templates repository 
 - [ ] Set up standard issue templates and contribution guidelines
 
 ## Contributing
