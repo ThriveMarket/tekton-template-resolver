@@ -12,8 +12,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
+	"time"
 	"unicode"
 
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -23,14 +25,66 @@ import (
 	"knative.dev/pkg/injection/sharedmain"
 )
 
-// Global debug flag
-var debugMode bool
+// Configuration constants with defaults
+const (
+	// Environment variable names
+	EnvDebug             = "DEBUG"
+	EnvHTTPTimeout       = "HTTP_TIMEOUT"
+	EnvResolutionTimeout = "RESOLUTION_TIMEOUT"
+	EnvGitCloneDepth     = "GIT_CLONE_DEPTH"
+	EnvGitBranch         = "GIT_DEFAULT_BRANCH"
+	
+	// Default values
+	DefaultHTTPTimeout       = 30 * time.Second
+	DefaultResolutionTimeout = 60 * time.Second
+	DefaultGitCloneDepth     = 1
+	DefaultGitBranch         = "main"
+)
+
+// Global config flags
+var (
+	debugMode bool
+	httpTimeout time.Duration
+	resolutionTimeout time.Duration
+	gitCloneDepth int
+	gitDefaultBranch string
+)
 
 // debugf prints debug messages only when debug mode is enabled
 func debugf(format string, args ...interface{}) {
 	if debugMode {
 		log.Printf(format, args...)
 	}
+}
+
+// getEnvWithDefault gets an environment variable value or returns the default if not set
+func getEnvWithDefault(key string, defaultValue string) string {
+	if val, ok := os.LookupEnv(key); ok {
+		return val
+	}
+	return defaultValue
+}
+
+// getEnvWithDefaultInt gets an environment variable as int or returns the default if not set
+func getEnvWithDefaultInt(key string, defaultValue int) int {
+	if val, ok := os.LookupEnv(key); ok {
+		if intVal, err := strconv.Atoi(val); err == nil {
+			return intVal
+		}
+		log.Printf("WARNING: Invalid value for %s, using default: %d", key, defaultValue)
+	}
+	return defaultValue
+}
+
+// getEnvWithDefaultDuration gets an environment variable as duration or returns default
+func getEnvWithDefaultDuration(key string, defaultValue time.Duration) time.Duration {
+	if val, ok := os.LookupEnv(key); ok {
+		if duration, err := time.ParseDuration(val); err == nil {
+			return duration
+		}
+		log.Printf("WARNING: Invalid value for %s, using default: %v", key, defaultValue)
+	}
+	return defaultValue
 }
 
 func main() {
@@ -40,11 +94,24 @@ func main() {
 	// Parse our flags first
 	flag.Parse()
 	
+	// Also check environment variable for debug mode
+	if debugEnv := getEnvWithDefault(EnvDebug, ""); debugEnv == "true" || debugEnv == "1" {
+		debugMode = true
+	}
+	
+	// Load configuration from environment variables
+	httpTimeout = getEnvWithDefaultDuration(EnvHTTPTimeout, DefaultHTTPTimeout)
+	resolutionTimeout = getEnvWithDefaultDuration(EnvResolutionTimeout, DefaultResolutionTimeout)
+	gitCloneDepth = getEnvWithDefaultInt(EnvGitCloneDepth, DefaultGitCloneDepth)
+	gitDefaultBranch = getEnvWithDefault(EnvGitBranch, DefaultGitBranch)
+	
 	// Reuse flag values for future flag.Parse() calls by setting arguments explicitly
 	os.Args = append([]string{os.Args[0]}, flag.Args()...)
 	
 	if debugMode {
 		log.Println("Debug mode enabled")
+		log.Printf("Configuration: HTTP Timeout=%v, Resolution Timeout=%v, Git Clone Depth=%d, Git Default Branch=%s",
+			httpTimeout, resolutionTimeout, gitCloneDepth, gitDefaultBranch)
 	}
 	
 	sharedmain.Main("controller",
@@ -332,13 +399,19 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 		user := parts[3]
 		gistID := parts[4]
 
+		// Create an HTTP client with timeout
+		client := &http.Client{
+			Timeout: httpTimeout,
+		}
+
 		// First try with the filename
 		rawURL := fmt.Sprintf("https://gist.githubusercontent.com/%s/%s/raw/%s", user, gistID, filePath)
+		debugf("Fetching Gist from URL: %s", rawURL)
 
 		// First check if we can fetch with the filename
-		resp, err := http.Get(rawURL)
+		resp, err := client.Get(rawURL)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to fetch gist: %w", err)
 		}
 
 		// If we got a 404, try without the filename (for single-file gists)
@@ -349,9 +422,10 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 
 			// Try without filename for single-file gists
 			rawURL = fmt.Sprintf("https://gist.githubusercontent.com/%s/%s/raw/", user, gistID)
-			resp, err = http.Get(rawURL)
+			debugf("File not found with name, trying single-file Gist URL: %s", rawURL)
+			resp, err = client.Get(rawURL)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("failed to fetch single-file gist: %w", err)
 			}
 		}
 
@@ -362,14 +436,15 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 		}()
 
 		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("HTTP error: %s", resp.Status)
+			return "", fmt.Errorf("HTTP error fetching Gist: %s", resp.Status)
 		}
 
 		content, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to read Gist content: %w", err)
 		}
 
+		debugf("Successfully fetched Gist content (%d bytes)", len(content))
 		return string(content), nil
 	}
 
@@ -381,15 +456,21 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 		if !strings.HasSuffix(repoURL, "/") {
 			repoURL += "/"
 		}
-		repoURL += "main/" // Assuming main branch
+		repoURL += gitDefaultBranch + "/" // Use configured default branch
 
 		// Construct the full URL to the raw file
 		fileURL := repoURL + filePath
+		debugf("Fetching GitHub file from URL: %s", fileURL)
+
+		// Create an HTTP client with timeout
+		client := &http.Client{
+			Timeout: httpTimeout,
+		}
 
 		// Fetch the content
-		resp, err := http.Get(fileURL)
+		resp, err := client.Get(fileURL)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to fetch GitHub file: %w", err)
 		}
 		defer func() {
 			if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
@@ -398,14 +479,15 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 		}()
 
 		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("HTTP error: %s", resp.Status)
+			return "", fmt.Errorf("HTTP error fetching GitHub file: %s", resp.Status)
 		}
 
 		content, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to read GitHub file content: %w", err)
 		}
 
+		debugf("Successfully fetched GitHub file content (%d bytes)", len(content))
 		return string(content), nil
 	}
 
@@ -414,7 +496,7 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 	// to use the mounted SSH key
 	tempDir, err := os.MkdirTemp("", "template-resolver-*")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer func() {
 		if removeErr := os.RemoveAll(tempDir); removeErr != nil && err == nil {
@@ -422,13 +504,24 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 		}
 	}()
 
-	// Setup git command with output capturing
-	cmd := exec.Command("git", "clone", "--depth=1", repoURL, tempDir)
+	// Setup git command with output capturing and configurable depth
+	cloneCmd := fmt.Sprintf("--depth=%d", gitCloneDepth)
+	debugf("Cloning Git repository %s with %s", repoURL, cloneCmd)
+	cmd := exec.Command("git", "clone", cloneCmd, repoURL, tempDir)
 	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	// Create a context with timeout for the git command
+	ctx, cancel := context.WithTimeout(context.Background(), resolutionTimeout)
+	defer cancel()
+	cmd = exec.CommandContext(ctx, "git", "clone", cloneCmd, repoURL, tempDir)
 	cmd.Stderr = &stderr
 
 	// Attempt to clone the repository
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("git clone timed out after %v", resolutionTimeout)
+		}
 		return "", fmt.Errorf("git clone failed: %w, stderr: %s", err, stderr.String())
 	}
 
@@ -439,6 +532,7 @@ func (g *gitTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, er
 		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
 
+	debugf("Successfully read file from Git repository (%d bytes)", len(content))
 	return string(content), nil
 }
 

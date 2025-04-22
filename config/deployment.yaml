@@ -51,19 +51,21 @@ spec:
           value: config-observability
         - name: METRICS_DOMAIN
           value: tekton.dev/resolution
+        # Git configuration
         - name: GIT_SSH_COMMAND
           value: "ssh -i /etc/git-secrets/ssh-privatekey -o StrictHostKeyChecking=no"
+        - name: GIT_CLONE_DEPTH
+          value: "1"
+        - name: GIT_DEFAULT_BRANCH
+          value: "main"
+        
+        # Resolver configuration
+        - name: DEBUG
+          value: "true"
         - name: RESOLUTION_TIMEOUT
           value: "10m"
-        # Add verbose HTTP timeout parameters for debugging
         - name: HTTP_TIMEOUT
           value: "60s"
-        - name: HTTP_IDLE_CONN_TIMEOUT
-          value: "90s"
-        - name: HTTP_TLS_HANDSHAKE_TIMEOUT
-          value: "30s"
-        - name: HTTP_EXPECT_CONTINUE_TIMEOUT
-          value: "10s"
         volumeMounts:
         - name: git-ssh-key
           mountPath: /etc/git-secrets
