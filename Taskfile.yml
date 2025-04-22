@@ -237,13 +237,7 @@ tasks:
           exit 0
         else
           # Check if the failure was due to timeout
-          echo "
-+---------------------------------------------+
-|  !!!  ERROR: E2E TEST FAILED  !!!          |
-|                                             |
-|  Checking resolver logs and status...       |
-+---------------------------------------------+
-"
+          echo '+---------------------------------------------+\n|  !!!  ERROR: E2E TEST FAILED  !!!          |\n|                                             |\n|  Checking resolver logs and status...       |\n+---------------------------------------------+\n'
           
           # Print the resolver pod logs
           RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o name | head -1)
