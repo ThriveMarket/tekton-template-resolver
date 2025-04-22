@@ -258,3 +258,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Make your changes and add tests
 4. Ensure all tests pass with `task test`
 5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
