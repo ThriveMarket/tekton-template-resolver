@@ -28,10 +28,10 @@ To use the Template Resolver in your Tekton pipeline, create a ResolutionRequest
 
 In addition to the required parameters, you can include any number of custom parameters. The resolver has the following special handling for parameters:
 
-1. **Task Parameters**: Any parameter containing Tekton tasks will be processed specially:
-   - Task YAML will be properly formatted for inclusion in the pipeline
-   - Task names will be extracted and made available as `<CamelCaseParamName>Names`
-   - The last task name will be available as `<CamelCaseParamName>Name`
+1. **Task Parameters**: Parameters containing Tekton tasks receive special handling:
+   - Task YAML is automatically formatted for proper inclusion in the pipeline
+   - Task names are extracted and made available as `<CamelCaseParamName>Names`
+   - The last task name is available as `<CamelCaseParamName>Name`
 
 2. **Regular Parameters**: Other parameters are passed through directly to the template
 
