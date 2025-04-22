@@ -1,7 +1,6 @@
 # Tekton Template Resolver
 
 [![CI/CD Pipeline](https://github.com/thrivemarket/template-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/thrivemarket/template-resolver/actions/workflows/ci.yml)
-[![Health Check](https://github.com/thrivemarket/template-resolver/actions/workflows/health-check.yml/badge.svg)](https://github.com/thrivemarket/template-resolver/actions/workflows/health-check.yml)
 
 ## Overview
 
