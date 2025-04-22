@@ -267,7 +267,7 @@ jobs:
       - name: Run integration tests
         run: |
           # Run the e2e test and capture the exit code
-          test:pipelinerun || {
+          task run:pipelinerun || {
             EXIT_CODE=$?
 
             set -x
