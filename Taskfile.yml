@@ -197,7 +197,117 @@ tasks:
     desc: Run end-to-end tests
     deps: [setup:kind, container:deploy]
     cmds:
+      - task run:pipelinerun
+
+  upgrade:deps:
+    desc: Upgrade dependencies to latest versions
+    cmds:
+      - go get -u all
+      - go mod tidy
+
+  goreleaser:snapshot:
+    desc: Create a snapshot release with goreleaser
+    cmds:
+      - goreleaser release --snapshot --rm-dist
+      
+  update:
+    desc: Update GitHub Gist template and deploy to local cluster for testing
+    cmds:
       - |
+        echo "===== Updating GitHub Gist ====="
+        # Configuration
+        GIST_ID="dfddf710d7884f997f0b648a07d7619c"
+        TEMPLATE_FILE="examples/templates/simple.yaml"
+        
+        # Check if template exists
+        if [ ! -f "$TEMPLATE_FILE" ]; then
+          echo "Error: Template file $TEMPLATE_FILE not found"
+          exit 1
+        fi
+        
+        # Check if gh CLI is installed
+        if ! command -v gh &> /dev/null; then
+          echo "Error: GitHub CLI (gh) is not installed or not in PATH"
+          echo "Install from: https://cli.github.com/"
+          exit 1
+        fi
+        
+        # Check if authenticated with GitHub
+        if ! gh auth status &> /dev/null; then
+          echo "Error: Not authenticated with GitHub. Run 'gh auth login' first."
+          exit 1
+        fi
+        
+        # Update the gist
+        echo "Updating Gist $GIST_ID with content from $TEMPLATE_FILE..."
+        gh gist edit "$GIST_ID" -f simple.yaml "$TEMPLATE_FILE"
+        
+        echo "Gist updated successfully!"
+        echo "URL: https://gist.github.com/justinabrahms/$GIST_ID"
+        
+
+  run:pipelinerun:
+    desc: Delete & recreate the pipelinerun
+    cmds:
+      - |
+        echo ""
+        echo "===== Testing Locally ====="
+        
+        echo "Building the template resolver..."
+        IMAGE_URL=$(ko build thrivemarket.com/template-resolver/cmd/template-resolver)
+        echo "Built image: $IMAGE_URL"
+        
+        echo "Updating deployment.yaml with the new image..."
+        # Create a temporary file with the updated image
+        TMP_FILE=$(mktemp)
+        cat config/deployment.yaml | awk -v img="$IMAGE_URL" '{
+          if ($1 == "image:") {
+            print "        image: " img;
+          } else {
+            print $0;
+          }
+        }' > $TMP_FILE
+        
+        # Replace the original file with the updated one
+        cp $TMP_FILE config/deployment.yaml
+        rm $TMP_FILE
+        
+        echo "Redeploying the resolver..."
+        kubectl delete deployment template-resolver -n tekton-pipelines-resolvers --ignore-not-found=true
+        kubectl apply -f config/deployment.yaml
+        
+        echo "Waiting for resolver to start..."
+        kubectl wait --for=condition=available deployment/template-resolver -n tekton-pipelines-resolvers --timeout=60s
+        
+        echo "Applying test request..."
+        kubectl delete resolutionrequest test-request --ignore-not-found=true
+        kubectl apply -f test-request.yaml
+        
+        echo "Waiting for resolution..."
+        sleep 5
+        
+        echo "Resolution result:"
+        STATUS=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].status}')
+        REASON=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].reason}')
+        
+        echo "Status: $STATUS"
+        echo "Reason: $REASON"
+        
+        if [ "$STATUS" == "True" ]; then
+          echo "Resolution succeeded!"
+          DATA=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.data}')
+          echo "Decoded template data:"
+          echo $DATA | base64 -d | head -n 20
+          echo "... (truncated)"
+        else
+          echo "Resolution failed. Checking logs..."
+          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}')
+          kubectl logs -n tekton-pipelines-resolvers $RESOLVER_POD --tail=50
+        fi
+        
+        echo ""
+        echo "Update and test process completed!"
+
         # Define the PipelineRun name for consistent reference
         PIPELINE_RUN_NAME="example-app-deployment"
         
@@ -262,110 +372,6 @@ tasks:
           
           exit 1
         fi
-
-  upgrade:deps:
-    desc: Upgrade dependencies to latest versions
-    cmds:
-      - go get -u all
-      - go mod tidy
-
-  goreleaser:snapshot:
-    desc: Create a snapshot release with goreleaser
-    cmds:
-      - goreleaser release --snapshot --rm-dist
-      
-  update:
-    desc: Update GitHub Gist template and deploy to local cluster for testing
-    cmds:
-      - |
-        echo "===== Updating GitHub Gist ====="
-        # Configuration
-        GIST_ID="dfddf710d7884f997f0b648a07d7619c"
-        TEMPLATE_FILE="examples/templates/simple.yaml"
-        
-        # Check if template exists
-        if [ ! -f "$TEMPLATE_FILE" ]; then
-          echo "Error: Template file $TEMPLATE_FILE not found"
-          exit 1
-        fi
-        
-        # Check if gh CLI is installed
-        if ! command -v gh &> /dev/null; then
-          echo "Error: GitHub CLI (gh) is not installed or not in PATH"
-          echo "Install from: https://cli.github.com/"
-          exit 1
-        fi
-        
-        # Check if authenticated with GitHub
-        if ! gh auth status &> /dev/null; then
-          echo "Error: Not authenticated with GitHub. Run 'gh auth login' first."
-          exit 1
-        fi
-        
-        # Update the gist
-        echo "Updating Gist $GIST_ID with content from $TEMPLATE_FILE..."
-        gh gist edit "$GIST_ID" -f simple.yaml "$TEMPLATE_FILE"
-        
-        echo "Gist updated successfully!"
-        echo "URL: https://gist.github.com/justinabrahms/$GIST_ID"
-        
-        echo ""
-        echo "===== Testing Locally ====="
-        
-        echo "Building the template resolver..."
-        IMAGE_URL=$(ko build thrivemarket.com/template-resolver/cmd/template-resolver)
-        echo "Built image: $IMAGE_URL"
-        
-        echo "Updating deployment.yaml with the new image..."
-        # Create a temporary file with the updated image
-        TMP_FILE=$(mktemp)
-        cat config/deployment.yaml | awk -v img="$IMAGE_URL" '{
-          if ($1 == "image:") {
-            print "        image: " img;
-          } else {
-            print $0;
-          }
-        }' > $TMP_FILE
-        
-        # Replace the original file with the updated one
-        cp $TMP_FILE config/deployment.yaml
-        rm $TMP_FILE
-        
-        echo "Redeploying the resolver..."
-        kubectl delete deployment template-resolver -n tekton-pipelines-resolvers --ignore-not-found=true
-        kubectl apply -f config/deployment.yaml
-        
-        echo "Waiting for resolver to start..."
-        kubectl wait --for=condition=available deployment/template-resolver -n tekton-pipelines-resolvers --timeout=60s
-        
-        echo "Applying test request..."
-        kubectl delete resolutionrequest test-request --ignore-not-found=true
-        kubectl apply -f test-request.yaml
-        
-        echo "Waiting for resolution..."
-        sleep 5
-        
-        echo "Resolution result:"
-        STATUS=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].status}')
-        REASON=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.conditions[0].reason}')
-        
-        echo "Status: $STATUS"
-        echo "Reason: $REASON"
-        
-        if [ "$STATUS" == "True" ]; then
-          echo "Resolution succeeded!"
-          DATA=$(kubectl get resolutionrequest test-request -o jsonpath='{.status.data}')
-          echo "Decoded template data:"
-          echo $DATA | base64 -d | head -n 20
-          echo "... (truncated)"
-        else
-          echo "Resolution failed. Checking logs..."
-          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}')
-          kubectl logs -n tekton-pipelines-resolvers $RESOLVER_POD --tail=50
-        fi
-        
-        echo ""
-        echo "Update and test process completed!"
       
   run:request:
     desc: Delete, recreate, and inspect a resolution request

@@ -220,7 +220,7 @@ jobs:
           sleep 5
           kubectl get pods -n tekton-pipelines-resolvers
 
-      - name: Make sure resolver pod is running
+      - name: Make sure tekton pipeline resolver pod is running
         run: |
           # Check if resolver pods are running correctly
           echo "Checking resolver pod status:"
@@ -261,49 +261,13 @@ jobs:
           # Wait for rollout to complete
           kubectl rollout status deployment/template-resolver -n tekton-pipelines-resolvers --timeout=2m
 
-      - name: Debug Resolver Pod and add Debug Logs
-        run: |
-          # Debug the resolver pods and Kubernetes environment
-          echo "==== Kubernetes Environment Debug Info ===="
-          echo "All pods in all namespaces:"
-          kubectl get pods -A
-          
-          echo "All resolver pods:"
-          kubectl get pods -n tekton-pipelines-resolvers
-          
-          echo "Detailed info for resolver pods:"
-          kubectl describe pods -n tekton-pipelines-resolvers
-          
-          # Get the template resolver pod name
-          RESOLVER_POD=$(kubectl get pods -n tekton-pipelines-resolvers -l app=template-resolver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-          
-          if [ -n "$RESOLVER_POD" ]; then
-            echo "Found resolver pod: $RESOLVER_POD"
-            
-            # Add a debug log to the container so we can verify log capture works
-            echo "Adding debug log to container..."
-            # Use kubectl exec to add a debug log marker
-            if kubectl exec -n tekton-pipelines-resolvers "$RESOLVER_POD" -- sh -c 'echo "DEBUG LOG MARKER: This is a test log entry from GitHub Actions" > /tmp/debug.log'; then
-              echo "Successfully added debug log"
-            else
-              echo "Failed to add debug log - pod may not be in ready state"
-            fi
-            
-            # Print all events for the pod
-            echo "Events for pod $RESOLVER_POD:"
-            kubectl get events -n tekton-pipelines-resolvers --field-selector involvedObject.name=$RESOLVER_POD
-          else
-            echo "No resolver pod found! Check deployment:"
-            kubectl get deployments -n tekton-pipelines-resolvers
-          fi
-          
       - name: Validate template resolver with test-request
         run: task run:request
 
       - name: Run integration tests
         run: |
           # Run the e2e test and capture the exit code
-          task test:e2e || {
+          test:pipelinerun || {
             EXIT_CODE=$?
 
             set -x
