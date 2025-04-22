@@ -273,7 +273,7 @@ These tasks should be completed before making the repository public:
 - [x] Verify all configuration is appropriately externalized
 - [ ] Complete comprehensive test coverage (in progress, current coverage: ~59%)
 - [ ] Finalize documentation with installation instructions for various environments
-- [ ] Set up standard issue templates and contribution guidelines
+- [x] Set up standard issue templates and contribution guidelines
 
 ## Contributing
 
