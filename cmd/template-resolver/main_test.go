@@ -232,7 +232,12 @@ func TestGitFetcherFetchTemplate(t *testing.T) {
 	// Create a temporary directory for Git tests
 	tempDir, err := os.MkdirTemp("", "template-resolver-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		err := os.RemoveAll(tempDir)
+		if err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 	
 	// Create a test server for HTTP requests
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -240,17 +245,26 @@ func TestGitFetcherFetchTemplate(t *testing.T) {
 		
 		// GitHub raw content
 		if strings.HasPrefix(path, "/example/repo/main/") {
-			w.Write([]byte("apiVersion: tekton.dev/v1\nkind: Pipeline\nmetadata:\n  name: test-pipeline"))
+			_, err := w.Write([]byte("apiVersion: tekton.dev/v1\nkind: Pipeline\nmetadata:\n  name: test-pipeline"))
+			if err != nil {
+				t.Logf("Failed to write response: %v", err)
+			}
 			return
 		}
 		
 		// Gist raw content
 		if strings.HasPrefix(path, "/user/gistid/raw/") {
 			if strings.HasSuffix(path, "/path/to/template.yaml") {
-				w.Write([]byte("apiVersion: tekton.dev/v1\nkind: Pipeline\nmetadata:\n  name: gist-template"))
+				_, err := w.Write([]byte("apiVersion: tekton.dev/v1\nkind: Pipeline\nmetadata:\n  name: gist-template"))
+				if err != nil {
+					t.Logf("Failed to write response: %v", err)
+				}
 				return
 			} else if path == "/user/gistid/raw/" {
-				w.Write([]byte("apiVersion: tekton.dev/v1\nkind: Pipeline\nmetadata:\n  name: gist-single-file"))
+				_, err := w.Write([]byte("apiVersion: tekton.dev/v1\nkind: Pipeline\nmetadata:\n  name: gist-single-file"))
+				if err != nil {
+					t.Logf("Failed to write response: %v", err)
+				}
 				return
 			}
 		}
@@ -305,7 +319,12 @@ func (t *testTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, e
 		if err != nil {
 			return "", err
 		}
-		defer resp.Body.Close()
+		defer func() {
+			closeErr := resp.Body.Close()
+			if closeErr != nil {
+				fmt.Printf("Failed to close response body: %v\n", closeErr)
+			}
+		}()
 		
 		if resp.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("HTTP error: %s", resp.Status)
@@ -334,7 +353,12 @@ func (t *testTemplateFetcher) FetchTemplate(repoURL, filePath string) (string, e
 		if err != nil {
 			return "", err
 		}
-		defer resp.Body.Close()
+		defer func() {
+			closeErr := resp.Body.Close()
+			if closeErr != nil {
+				fmt.Printf("Failed to close response body: %v\n", closeErr)
+			}
+		}()
 		
 		if resp.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("HTTP error: %s", resp.Status)
