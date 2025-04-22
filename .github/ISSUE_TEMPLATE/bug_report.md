@@ -1,38 +1,42 @@
 ---
 name: Bug report
-about: Create a report to help us improve the template resolver
-title: "[BUG]"
+about: Create a report to help us improve
+title: '[BUG] '
 labels: bug
 assignees: ''
-
 ---
 
-**Describe the bug**
+## Bug Description
 A clear and concise description of what the bug is.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Create a ResolutionRequest with content '...'
-2. Wait for resolution
+## Steps to Reproduce
+1. Deploy resolver with '...'
+2. Create a ResolutionRequest with '...'
 3. See error
 
-**Expected behavior**
+## Expected Behavior
 A clear and concise description of what you expected to happen.
 
-**Template and Request Details**
-- Template content: [e.g. GitHub Gist URL or code snippet]
-- Request parameters: [e.g. full ResolutionRequest YAML]
-- Error message: [e.g. "error requesting remote resource: resolution took longer than global timeout"]
+## Actual Behavior
+A clear and concise description of what actually happened.
 
-**Environment**
-- Kubernetes version: [e.g. 1.25]
-- Tekton Pipelines version: [e.g. 0.51.0]
-- Template Resolver version: [e.g. 0.1.0]
+## Environment
+- Kubernetes version:
+- Tekton Pipelines version:
+- Template Resolver version:
+- Operating system:
 
-**Template Resolver Logs**
+## Logs and YAML Files
+<\!-- Please include any relevant logs or YAML files -->
+
+```yaml
+# Add your YAML here (ResolutionRequest, template, etc.)
 ```
-Paste the logs from the template-resolver pod
+
+```
+# Add logs here
 ```
 
-**Additional context**
+## Additional Context
 Add any other context about the problem here.
+EOF < /dev/null

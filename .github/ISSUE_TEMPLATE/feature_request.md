@@ -1,26 +1,20 @@
 ---
 name: Feature request
-about: Suggest an idea for the template resolver
-title: "[FEATURE]"
+about: Suggest an idea for this project
+title: '[FEATURE] '
 labels: enhancement
 assignees: ''
-
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## Problem Statement
+A clear and concise description of what problem you'd like to solve. Ex. I'm always frustrated when [...]
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+## Proposed Solution
+A clear and concise description of what you want to happen. Include any alternatives you've considered.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Use Case
+Describe a specific use case or scenario where this feature would be beneficial.
 
-**Example use case**
-Provide an example of how this feature would be used in practice:
-```yaml
-# Example template or usage pattern
-```
-
-**Additional context**
+## Additional Context
 Add any other context or screenshots about the feature request here.
+EOF < /dev/null
