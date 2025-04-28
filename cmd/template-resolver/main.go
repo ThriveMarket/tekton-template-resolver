@@ -175,19 +175,25 @@ func runStandalone(resolver *resolver, port int) {
 		// Return the resolved template
 		w.Header().Set("Content-Type", "application/yaml")
 		w.WriteHeader(http.StatusOK)
-		w.Write(result.Data())
+		if _, err := w.Write(result.Data()); err != nil {
+			log.Printf("Error writing response: %v", err)
+		}
 	})
 	
 	// Add a health check endpoint
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "OK")
+		if _, err := fmt.Fprintln(w, "OK"); err != nil {
+			log.Printf("Error writing health response: %v", err)
+		}
 	})
 	
 	// Add a readiness endpoint
 	http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "Ready")
+		if _, err := fmt.Fprintln(w, "Ready"); err != nil {
+			log.Printf("Error writing readiness response: %v", err)
+		}
 	})
 	
 	// Start the server
