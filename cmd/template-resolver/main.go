@@ -88,13 +88,10 @@ func getEnvWithDefaultDuration(key string, defaultValue time.Duration) time.Dura
 }
 
 func main() {
-	// Parse debug flag before sharedmain takes over flag parsing
+	// Define our flags without parsing
 	flag.BoolVar(&debugMode, "debug", false, "Enable debug logging")
 	
-	// Parse our flags first
-	flag.Parse()
-	
-	// Also check environment variable for debug mode
+	// Check environment variable for debug mode
 	if debugEnv := getEnvWithDefault(EnvDebug, ""); debugEnv == "true" || debugEnv == "1" {
 		debugMode = true
 	}
@@ -104,9 +101,6 @@ func main() {
 	resolutionTimeout = getEnvWithDefaultDuration(EnvResolutionTimeout, DefaultResolutionTimeout)
 	gitCloneDepth = getEnvWithDefaultInt(EnvGitCloneDepth, DefaultGitCloneDepth)
 	gitDefaultBranch = getEnvWithDefault(EnvGitBranch, DefaultGitBranch)
-	
-	// Reuse flag values for future flag.Parse() calls by setting arguments explicitly
-	os.Args = append([]string{os.Args[0]}, flag.Args()...)
 	
 	if debugMode {
 		log.Println("Debug mode enabled")
