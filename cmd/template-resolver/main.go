@@ -88,11 +88,23 @@ func getEnvWithDefaultDuration(key string, defaultValue time.Duration) time.Dura
 }
 
 func main() {
-	// Define our flags
-	standaloneMode := flag.Bool("standalone", false, "Run in standalone mode without Knative")
-	port := flag.Int("port", 8080, "Port to listen on in standalone mode")
-	flag.BoolVar(&debugMode, "debug", false, "Enable debug logging")
-	flag.Parse()
+	// Check for standalone mode before any flag parsing
+	// This allows us to handle flags differently in each mode
+	isStandalone := false
+	standalonePort := 8080
+	
+	// Pre-scan args for standalone flag without using the flag package
+	for i, arg := range os.Args {
+		if arg == "-standalone" || arg == "--standalone" {
+			isStandalone = true
+		} else if (arg == "-port" || arg == "--port") && i+1 < len(os.Args) {
+			if port, err := strconv.Atoi(os.Args[i+1]); err == nil {
+				standalonePort = port
+			}
+		} else if arg == "-debug" || arg == "--debug" {
+			debugMode = true
+		}
+	}
 	
 	// Check environment variable for debug mode
 	if debugEnv := getEnvWithDefault(EnvDebug, ""); debugEnv == "true" || debugEnv == "1" {
@@ -120,13 +132,20 @@ func main() {
 	}
 	
 	// Choose between standalone mode and Knative mode
-	if *standaloneMode {
-		runStandalone(resolver, *port)
-	} else {
-		// Reset flag.CommandLine to allow Knative to parse its own flags
-		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	if isStandalone {
+		// In standalone mode, explicitly parse our own flags
+		fs := flag.NewFlagSet("standalone", flag.ExitOnError)
+		fs.BoolVar(&debugMode, "debug", debugMode, "Enable debug logging")
+		_ = fs.Int("port", standalonePort, "Port to listen on in standalone mode")
+		_ = fs.Bool("standalone", true, "Run in standalone mode without Knative")
+		if err := fs.Parse(os.Args[1:]); err != nil {
+			log.Fatalf("Error parsing flags: %v", err)
+		}
 		
-		// Run with Knative integration
+		runStandalone(resolver, standalonePort)
+	} else {
+		// In Knative mode, let Knative handle all flag parsing
+		// Don't register our own flags, let Knative control them
 		sharedmain.Main("controller",
 			framework.NewController(context.Background(), resolver),
 		)
