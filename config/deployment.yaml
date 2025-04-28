@@ -27,9 +27,9 @@ spec:
       serviceAccountName: tekton-pipelines-resolvers
       containers:
       - name: controller
-        image: kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:8ebe3ef3f728707b71571f0df0a212f004cce029cd9655635aa1c5d391e60b39
+        image: kind.local/template-resolver-96634542ebcc71fd14f04f28d0789c48:e35a6c9c5e2841ea1183ce6719f33db4970f2b80096c8e9b7f93208658e5ab61
         args:
-        - "-debug=true"  # Enable debug logging
+        - "-v=9"  # Enable debug logging
         resources:
           requests:
             cpu: 100m
