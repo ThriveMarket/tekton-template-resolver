@@ -52,6 +52,7 @@ go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out
 - Use context.Context for request-scoped operations
 - Align with the Tekton pipelines resolver pattern
 - Test files should end with _test.go
+- Always run the linter before committing go code
 
 ## Template Formatting Guidelines
 - Be careful with YAML indentation in templates
