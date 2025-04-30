@@ -50,6 +50,45 @@ tasks:
       - ko build -B thrivemarket.com/template-resolver/cmd/template-resolver
     env:
       KO_DOCKER_REPO: "{{.KO_DOCKER_REPO}}"
+      
+  container:test:
+    desc: Test if git is installed in the container image
+    cmds:
+      - |
+        echo "Testing git installation in the container image..."
+        
+        # Build the image directly with docker
+        echo "Building with docker..."
+        docker build -t template-resolver-test:latest .
+        
+        # Create a Docker container to test git
+        echo "Creating test container from template-resolver-test:latest..."
+        CONTAINER_ID=$(docker create --entrypoint /usr/bin/git template-resolver-test:latest --version || echo 'Git not found')
+        
+        # Start the container
+        docker start $CONTAINER_ID
+        
+        # Wait for container to finish (with timeout)
+        timeout 10s docker wait $CONTAINER_ID || (docker kill $CONTAINER_ID > /dev/null && echo "Test timed out")
+        
+        # Get the output
+        OUTPUT=$(docker logs $CONTAINER_ID)
+        echo "Test output: $OUTPUT"
+        
+        # Clean up the container
+        docker rm $CONTAINER_ID > /dev/null
+        
+        # Check if git exists
+        if [[ "$OUTPUT" == *"Git not found"* ]]; then
+          echo "❌ Git is NOT available in the container"
+          exit 1
+        elif [[ "$OUTPUT" == *"git version"* ]]; then
+          echo "✅ Git is successfully installed in the container"
+          exit 0
+        else
+          echo "❓ Inconclusive test result"
+          exit 1
+        fi
 
   container:deploy:
     desc: Deploy template-resolver to Kubernetes cluster
