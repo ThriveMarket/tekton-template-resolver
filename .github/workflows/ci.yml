@@ -5,6 +5,13 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      force_full_build:
+        description: 'Force full build pipeline (bypass Go change detection)'
+        required: false
+        type: boolean
+        default: true
 
 # Permissions needed for GitHub workflows
 permissions:
@@ -18,7 +25,7 @@ jobs:
     name: Check for Go changes
     runs-on: ubuntu-latest
     outputs:
-      go-changed: ${{ steps.filter.outputs.go }}
+      go-changed: ${{ steps.set-output.outputs.go-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,10 +42,23 @@ jobs:
               - 'go.sum'
               - '.golangci.yml'
               - 'vendor/**'
+              - 'Dockerfile'
       
+      - name: Set output based on changes or manual trigger
+        id: set-output
+        run: |
+          # Set to true if workflow was manually triggered with force_full_build
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.force_full_build }}" == "true" ]]; then
+            echo "Force full build requested via manual trigger"
+            echo "go-changed=true" >> $GITHUB_OUTPUT
+          else
+            # Use the result from the paths-filter
+            echo "go-changed=${{ steps.filter.outputs.go }}" >> $GITHUB_OUTPUT
+          fi
+          
       - name: Show change status
         run: |
-          echo "Go files changed: ${{ steps.filter.outputs.go }}"
+          echo "Go files changed or forced build: ${{ steps.set-output.outputs.go-changed }}"
 
   lint:
     name: Code Linting
