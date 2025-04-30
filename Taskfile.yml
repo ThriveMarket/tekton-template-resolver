@@ -84,7 +84,25 @@ tasks:
           exit 1
         elif [[ "$OUTPUT" == *"git version"* ]]; then
           echo "✅ Git is successfully installed in the container"
-          exit 0
+          
+          # Now test for SSH
+          echo "Testing SSH installation..."
+          # Run the container with sh to capture both stdout and stderr
+          SSH_CONTAINER_ID=$(docker create --entrypoint /bin/sh template-resolver-test:latest -c "ssh -V 2>&1")
+          docker start $SSH_CONTAINER_ID
+          timeout 10s docker wait $SSH_CONTAINER_ID || (docker kill $SSH_CONTAINER_ID > /dev/null && echo "SSH test timed out")
+          SSH_OUTPUT=$(docker logs $SSH_CONTAINER_ID)
+          docker rm $SSH_CONTAINER_ID > /dev/null
+          
+          echo "SSH test output: $SSH_OUTPUT"
+          
+          if [[ "$SSH_OUTPUT" == *"OpenSSH"* ]]; then
+            echo "✅ SSH is successfully installed in the container"
+            exit 0
+          else
+            echo "❌ SSH is NOT available in the container"
+            exit 1
+          fi
         else
           echo "❓ Inconclusive test result"
           exit 1

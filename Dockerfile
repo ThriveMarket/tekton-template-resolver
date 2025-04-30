@@ -16,15 +16,14 @@ COPY . .
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -o template-resolver ./cmd/template-resolver
 
-# Final stage
-FROM gcr.io/distroless/static:nonroot
+# Final stage with Git and SSH
+FROM alpine:latest
 
-# Install git and dependencies
-COPY --from=alpine/git:latest /usr/bin/git /usr/bin/git
-COPY --from=alpine/git:latest /usr/libexec/git-core /usr/libexec/git-core
-COPY --from=alpine/git:latest /usr/share/git-core /usr/share/git-core
-COPY --from=alpine/git:latest /lib/ /lib/
-COPY --from=alpine/git:latest /usr/lib/ /usr/lib/
+# Install git and ssh
+RUN apk add --no-cache git openssh-client && \
+    # Create non-root user for security
+    addgroup -S nonroot && \
+    adduser -S nonroot -G nonroot
 
 # Copy binary from build stage
 COPY --from=builder /app/template-resolver /app/template-resolver
