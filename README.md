@@ -89,16 +89,32 @@ spec:
 
 ### Using Parameters in Templates
 
-When creating templates, you can access any parameter by its camel-cased name. For parameters containing tasks, you also have access to the task names:
+When creating templates, you can access any parameter by its camel-cased name. For parameters containing tasks, you also have access to the task objects, names, and formatted YAML:
 
 ```yaml
-# Example: Using a task parameter
+# Example 1: Using a task parameter directly (legacy approach)
 {{- if .ValidationSteps }}
 # Include the validation tasks
 {{ .ValidationSteps }}
 {{- end }}
 
-# Example: Using task names from parameters
+# Example 2: Iterating over structured task objects (recommended)
+{{- if .ValidationStepsObjects }}
+{{- range $index, $task := .ValidationStepsObjects }}
+- name: {{ $task.name }}
+  taskRef:
+    name: {{ index $task.taskRef "name" }}
+  {{- if $task.params }}
+  params:
+  {{- range $task.params }}
+    - name: {{ .name }}
+      value: {{ .value }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+# Example 3: Using task names from parameters
 - name: next-task
   runAfter:
   {{- if .ValidationStepsNames }}
@@ -109,13 +125,13 @@ When creating templates, you can access any parameter by its camel-cased name. F
   - default-task
   {{- end }}
 
-# Example: Using a regular array parameter
+# Example 4: Using a regular array parameter
 allowed-environments:
 {{- range .AllowedEnvironments }}
 - {{ . }}
 {{- end }}
 
-# Example: Using a regular string parameter
+# Example 5: Using a regular string parameter
 app-name: {{ .AppName }}
 ```
 
@@ -239,6 +255,8 @@ For more detailed information about available commands, examine the Taskfile.yml
 - **Consistent Naming Convention**: All parameters are converted to camelCase for template use
 - **Task Name Extraction**: Task names are automatically extracted for use in dependencies
 - **Flexible Parameter Formats**: Works with both array parameters and string parameters containing YAML
+- **Structured Object Access**: Use direct iteration over task objects with full access to all properties
+- **Backwards Compatibility**: Maintains support for legacy template formats
 
 ## Roadmap
 

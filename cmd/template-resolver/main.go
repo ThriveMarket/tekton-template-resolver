@@ -285,6 +285,10 @@ func (r *resolver) ValidateParams(ctx context.Context, params []pipelinev1.Param
 }
 
 // Resolve fetches the template from Git, applies parameters, and returns the rendered template.
+// For YAML array parameters that look like Tekton tasks:
+// - The parameter is stored directly in templateData[camelName] as a formatted YAML string for backward compatibility
+// - The structured objects are stored in templateData[camelName+"Objects"] for direct iteration in modern templates
+// - The task names are stored in templateData[camelName+"Names"] for runAfter references
 func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (framework.ResolvedResource, error) {
 	debugf("Resolve called with %d params", len(params))
 	
@@ -356,8 +360,21 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 				if err := json.Unmarshal([]byte(allItemsJSON), &taskObjects); err == nil {
 					debugf("Successfully parsed JSON array with %d objects", len(taskObjects))
 					
-					// Store the objects directly for iteration in templates
-					templateData[camelName] = taskObjects
+					// Format for YAML inclusion (this is what templates expect)
+					tasksYAML, err := yaml.Marshal(taskObjects)
+					if err == nil {
+						formattedYAML, err := formatTasksYAML(string(tasksYAML))
+						if err == nil {
+							// Store the formatted YAML for legacy template inclusion
+							debugf("Adding formatted tasks as %s", camelName)
+							templateData[camelName] = formattedYAML
+							
+							// Also store the objects for direct iteration
+							structuredKey := camelName + "Objects"
+							debugf("Adding structured objects as %s", structuredKey)
+							templateData[structuredKey] = taskObjects
+						}
+					}
 					
 					// Extract task names (for runAfter references)
 					var taskNames []string
@@ -372,16 +389,6 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 						namesParam := camelName + "Names"
 						debugf("Adding task names as %s: %v", namesParam, taskNames)
 						templateData[namesParam] = taskNames
-					}
-					
-					// Format for YAML include (legacy compatibility)
-					tasksYAML, err := yaml.Marshal(taskObjects)
-					if err == nil {
-						formattedYAML, err := formatTasksYAML(string(tasksYAML))
-						if err == nil {
-							debugf("Adding formatted YAML as %sYAML", camelName)
-							templateData[camelName+"YAML"] = formattedYAML
-						}
 					}
 					
 					// Skip the rest of the processing
@@ -417,12 +424,14 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 					if err != nil {
 						log.Printf("WARNING: Failed to format %s: %v", param.Name, err)
 					} else {
-						// Add formatted tasks to template data
+						// Add formatted tasks to template data 
 						debugf("Adding tasks as %s", camelName)
-						templateData[camelName] = tasks
+						templateData[camelName] = formattedTasks
 						
-						// Add formatted YAML string
-						templateData[camelName+"YAML"] = formattedTasks
+						// Also store structured task objects for direct iteration
+						structuredKey := camelName + "Objects"
+						debugf("Adding structured objects as %s", structuredKey)
+						templateData[structuredKey] = tasks
 						
 						// Extract task names
 						var taskNames []string
@@ -476,9 +485,14 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 								log.Printf("WARNING: Failed to format %s: %v", param.Name, err)
 								templateData[camelName] = paramVal
 							} else {
-								// Add formatted tasks to template data
+								// Add formatted tasks to template data  
 								debugf("Adding string tasks as %s", camelName)
 								templateData[camelName] = formattedTasks
+								
+								// Also store the structured objects
+								structuredKey := camelName + "Objects"
+								debugf("Adding structured objects as %s", structuredKey)
+								templateData[structuredKey] = tasks
 								
 								// Extract task names
 								var taskNames []string

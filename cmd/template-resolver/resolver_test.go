@@ -429,6 +429,107 @@ params:
 	assert.Contains(t, renderedData, "- compliance-check")
 }
 
+// TestResolverStructuredTaskObjects tests the resolver with structured task objects iteration
+func TestResolverStructuredTaskObjects(t *testing.T) {
+	// Create a mock fetcher with a template that uses structured objects
+	mockData := &mockFetcher{
+		templates: map[string]string{
+			"repo1:path1": `
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: structured-objects-pipeline
+spec:
+  params:
+    - name: app-name
+      type: string
+  tasks:
+    # Base task
+    - name: base-task
+      taskRef:
+        name: some-task
+    
+    # Iterate over structured objects directly
+    {{- if .CustomStepsObjects }}
+    {{- range $i, $task := .CustomStepsObjects }}
+    - name: {{ $task.name }}
+      taskRef:
+        name: {{ index $task.taskRef "name" }}
+      {{- if $task.params }}
+      params:
+      {{- range $task.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+`,
+		},
+	}
+	
+	// Create resolver with mock fetcher
+	r := &resolver{
+		fetcher: mockData,
+	}
+	
+	// Test with structured task objects
+	params := []pipelinev1.Param{
+		{
+			Name: "repository",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "repo1",
+			},
+		},
+		{
+			Name: "path",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "path1",
+			},
+		},
+		{
+			Name: "custom-steps",
+			Value: pipelinev1.ParamValue{
+				Type: "array",
+				ArrayVal: []string{
+					`name: direct-task-1
+taskRef:
+  name: validator-1
+params:
+  - name: param1
+    value: value1`,
+					`name: direct-task-2
+taskRef:
+  name: validator-2
+params:
+  - name: param2
+    value: value2`,
+				},
+			},
+		},
+	}
+	
+	// Execute the Resolve function
+	result, err := r.Resolve(context.Background(), params)
+	
+	// Verify results
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	
+	// Check that the template correctly processed the structured objects
+	renderedData := string(result.Data())
+	assert.Contains(t, renderedData, "name: direct-task-1")
+	assert.Contains(t, renderedData, "name: direct-task-2")
+	assert.Contains(t, renderedData, "name: validator-1")
+	assert.Contains(t, renderedData, "name: validator-2")
+	assert.Contains(t, renderedData, "name: param1")
+	assert.Contains(t, renderedData, "value: value1")
+	assert.Contains(t, renderedData, "name: param2")
+	assert.Contains(t, renderedData, "value: value2")
+}
+
 // TestResolverArrayParameter tests the resolver with a regular array parameter (not tasks)
 func TestResolverArrayParameter(t *testing.T) {
 	// Create a mock fetcher with a template that uses a regular array parameter
