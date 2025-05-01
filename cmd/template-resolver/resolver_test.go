@@ -109,7 +109,18 @@ spec:
     
     # Custom validation steps if provided
     {{- if .CustomValidationSteps }}
-    {{ .CustomValidationSteps }}
+    {{- range $i, $task := .CustomValidationSteps }}
+    - name: {{ $task.name }}
+      taskRef:
+        name: {{ index $task.taskRef "name" }}
+      {{- if $task.params }}
+      params:
+      {{- range $task.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
     
     # Next task with dependencies on custom validation if provided
@@ -208,7 +219,18 @@ spec:
     
     # Custom steps via array parameter
     {{- if .CustomSteps }}
-    {{ .CustomSteps }}
+    {{- range $i, $task := .CustomSteps }}
+    - name: {{ $task.name }}
+      taskRef:
+        name: {{ index $task.taskRef "name" }}
+      {{- if $task.params }}
+      params:
+      {{- range $task.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
     
     # Second task with dependencies on custom steps
@@ -226,7 +248,18 @@ spec:
         
     # Post-dev steps via string parameter (legacy format)
     {{- if .PostDevSteps }}
-    {{ .PostDevSteps }}
+    {{- range $i, $task := .PostDevSteps }}
+    - name: {{ $task.name }}
+      taskRef:
+        name: {{ index $task.taskRef "name" }}
+      {{- if $task.params }}
+      params:
+      {{- range $task.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
 `,
 		},
@@ -335,12 +368,34 @@ spec:
     
     # Security audit if provided
     {{- if .SecurityAuditSteps }}
-    {{ .SecurityAuditSteps }}
+    {{- range $i, $task := .SecurityAuditSteps }}
+    - name: {{ $task.name }}
+      taskRef:
+        name: {{ index $task.taskRef "name" }}
+      {{- if $task.params }}
+      params:
+      {{- range $task.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
     
     # Compliance checks if provided
     {{- if .ComplianceCheckSteps }}
-    {{ .ComplianceCheckSteps }}
+    {{- range $i, $task := .ComplianceCheckSteps }}
+    - name: {{ $task.name }}
+      taskRef:
+        name: {{ index $task.taskRef "name" }}
+      {{- if $task.params }}
+      params:
+      {{- range $task.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
     
     # Final task with dependencies on all previous tasks
@@ -450,8 +505,8 @@ spec:
         name: some-task
     
     # Iterate over structured objects directly
-    {{- if .CustomStepsObjects }}
-    {{- range $i, $task := .CustomStepsObjects }}
+    {{- if .CustomSteps }}
+    {{- range $i, $task := .CustomSteps }}
     - name: {{ $task.name }}
       taskRef:
         name: {{ index $task.taskRef "name" }}
