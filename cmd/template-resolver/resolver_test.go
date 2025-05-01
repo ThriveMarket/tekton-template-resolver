@@ -109,7 +109,19 @@ spec:
     
     # Custom validation steps if provided
     {{- if .CustomValidationSteps }}
-    {{ .CustomValidationSteps }}
+    {{- $validationSteps := fromYAML .CustomValidationSteps }}
+    {{- range $i, $step := $validationSteps }}
+    - name: {{ $step.name }}
+      taskRef:
+        name: {{ index $step.taskRef "name" }}
+      {{- if $step.params }}
+      params:
+      {{- range $step.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
     
     # Next task with dependencies on custom validation if provided
@@ -208,8 +220,18 @@ spec:
     
     # Custom steps via array parameter
     {{- if .CustomSteps }}
-    {{- range $step := .CustomSteps }}
-    - {{ $step }}
+    {{- $customSteps := fromYAML .CustomSteps }}
+    {{- range $i, $step := $customSteps }}
+    - name: {{ $step.name }}
+      taskRef:
+        name: {{ index $step.taskRef "name" }}
+      {{- if $step.params }}
+      params:
+      {{- range $step.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
     {{- end}}
     {{- end }}
     
@@ -228,7 +250,19 @@ spec:
         
     # Post-dev steps via string parameter (legacy format)
     {{- if .PostDevSteps }}
-    {{ .PostDevSteps }}
+    {{- $postDevSteps := fromYAML .PostDevSteps }}
+    {{- range $i, $step := $postDevSteps }}
+    - name: {{ $step.name }}
+      taskRef:
+        name: {{ index $step.taskRef "name" }}
+      {{- if $step.params }}
+      params:
+      {{- range $step.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
 `,
 		},
@@ -337,12 +371,36 @@ spec:
     
     # Security audit if provided
     {{- if .SecurityAuditSteps }}
-    {{ .SecurityAuditSteps }}
+    {{- $securitySteps := fromYAML .SecurityAuditSteps }}
+    {{- range $i, $step := $securitySteps }}
+    - name: {{ $step.name }}
+      taskRef:
+        name: {{ index $step.taskRef "name" }}
+      {{- if $step.params }}
+      params:
+      {{- range $step.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
     
     # Compliance checks if provided
     {{- if .ComplianceCheckSteps }}
-    {{ .ComplianceCheckSteps }}
+    {{- $complianceSteps := fromYAML .ComplianceCheckSteps }}
+    {{- range $i, $step := $complianceSteps }}
+    - name: {{ $step.name }}
+      taskRef:
+        name: {{ index $step.taskRef "name" }}
+      {{- if $step.params }}
+      params:
+      {{- range $step.params }}
+        - name: {{ .name }}
+          value: {{ .value }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
     {{- end }}
     
     # Final task with dependencies on all previous tasks
@@ -690,4 +748,209 @@ notifyEmail: security@example.com`,
 	assert.Contains(t, renderedData, "- name: api-service")
 	assert.Contains(t, renderedData, "- api.example.com")
 	assert.Contains(t, renderedData, "- www.example.com")
+}
+
+// TestResolverYAMLListProcessing tests parsing and iterating over a list of YAML objects
+func TestResolverYAMLListProcessing(t *testing.T) {
+	// Create a mock fetcher with a template that processes a list of YAML objects
+	mockData := &mockFetcher{
+		templates: map[string]string{
+			"repo1:path1": `
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: yaml-list-processing-pipeline
+spec:
+  params:
+    - name: app-name
+      type: string
+  tasks:
+    # Base task
+    - name: base-task
+      taskRef:
+        name: some-task
+      
+    # Process a list of environment configurations using fromYAML
+    {{- $envConfigs := fromYAML .EnvironmentConfigs }}
+    {{- if $envConfigs }}
+    {{- range $i, $env := $envConfigs }}
+    # Environment configuration for {{ $env.name }}
+    - name: deploy-to-{{ $env.name }}
+      taskRef:
+        name: env-deployer
+      params:
+        - name: environment
+          value: {{ $env.name }}
+        - name: cluster
+          value: {{ $env.cluster }}
+        - name: namespace
+          value: {{ $env.namespace }}
+        {{- if $env.resources }}
+        - name: cpu-limit
+          value: "{{ $env.resources.limits.cpu }}"
+        - name: memory-limit
+          value: "{{ $env.resources.limits.memory }}"
+        {{- end }}
+        {{- if $env.replicas }}
+        - name: replicas
+          value: "{{ $env.replicas }}"
+        {{- end }}
+        {{- if $env.features }}
+        - name: features
+          value: |
+            {{- range $feature, $enabled := $env.features }}
+            {{ $feature }}: {{ $enabled }}
+            {{- end }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+    
+    # Process a list of service configurations using fromYAML
+    {{- $serviceConfigs := fromYAML .ServiceConfigs }}
+    {{- if $serviceConfigs }}
+    # Service configurations
+    - name: configure-services
+      taskRef:
+        name: service-configurator
+      params:
+        - name: services-json
+          value: |
+            [
+            {{- range $i, $svc := $serviceConfigs }}
+            {{- if $i }},{{- end }}
+            {
+              "name": "{{ $svc.name }}",
+              "port": {{ $svc.port }},
+              "targetPort": {{ $svc.targetPort }},
+              "type": "{{ $svc.type }}",
+              "annotations": {
+              {{- range $key, $value := $svc.annotations }}
+                "{{ $key }}": "{{ $value }}"{{- if not (last $svc.annotations $key) }},{{- end }}
+              {{- end }}
+              }
+            }
+            {{- end }}
+            ]
+    {{- end }}
+`,
+		},
+	}
+	
+	// Create resolver with mock fetcher
+	r := &resolver{
+		fetcher: mockData,
+	}
+	
+	// Test with lists of YAML objects
+	params := []pipelinev1.Param{
+		{
+			Name: "repository",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "repo1",
+			},
+		},
+		{
+			Name: "path",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "path1",
+			},
+		},
+		// Environment configs as a YAML list
+		{
+			Name: "environment-configs",
+			Value: pipelinev1.ParamValue{
+				Type: "string",
+				StringVal: `- name: development
+  cluster: dev-cluster
+  namespace: app-dev
+  replicas: 1
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  features:
+    logging: true
+    monitoring: false
+    tracing: false
+- name: production
+  cluster: prod-cluster
+  namespace: app-prod
+  replicas: 3
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  features:
+    logging: true
+    monitoring: true
+    tracing: true`,
+			},
+		},
+		// Service configs as a YAML list
+		{
+			Name: "service-configs",
+			Value: pipelinev1.ParamValue{
+				Type: "string",
+				StringVal: `- name: web-frontend
+  port: 80
+  targetPort: 8080
+  type: ClusterIP
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+- name: api-backend
+  port: 443
+  targetPort: 8443
+  type: ClusterIP
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8443"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "https"`,
+			},
+		},
+	}
+	
+	// Execute the Resolve function
+	result, err := r.Resolve(context.Background(), params)
+	
+	// Verify results
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	
+	// Check that the template was rendered with all the objects from the lists
+	renderedData := string(result.Data())
+	
+	// Verify environment config rendering
+	assert.Contains(t, renderedData, "name: deploy-to-development")
+	assert.Contains(t, renderedData, "value: development")
+	assert.Contains(t, renderedData, "value: dev-cluster")
+	assert.Contains(t, renderedData, "value: app-dev")
+	assert.Contains(t, renderedData, "value: \"1\"")
+	assert.Contains(t, renderedData, "value: \"250m\"")
+	
+	assert.Contains(t, renderedData, "name: deploy-to-production")
+	assert.Contains(t, renderedData, "value: production")
+	assert.Contains(t, renderedData, "value: prod-cluster")
+	assert.Contains(t, renderedData, "value: app-prod")
+	assert.Contains(t, renderedData, "value: \"3\"")
+	assert.Contains(t, renderedData, "value: \"1000m\"")
+	
+	// Verify features map iteration
+	assert.Contains(t, renderedData, "logging: true")
+	assert.Contains(t, renderedData, "monitoring: true")
+	assert.Contains(t, renderedData, "tracing: true")
+	
+	// Verify service config rendering in JSON format
+	assert.Contains(t, renderedData, `"name": "web-frontend"`)
+	assert.Contains(t, renderedData, `"port": 80`)
+	assert.Contains(t, renderedData, `"targetPort": 8080`)
+	assert.Contains(t, renderedData, `"type": "ClusterIP"`)
+	assert.Contains(t, renderedData, `"prometheus.io/scrape": "true"`)
+	
+	assert.Contains(t, renderedData, `"name": "api-backend"`)
+	assert.Contains(t, renderedData, `"port": 443`)
+	assert.Contains(t, renderedData, `"targetPort": 8443`)
+	assert.Contains(t, renderedData, `"service.beta.kubernetes.io/aws-load-balancer-backend-protocol": "https"`)
 }

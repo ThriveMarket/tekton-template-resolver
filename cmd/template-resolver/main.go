@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -775,6 +776,24 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			}
 
 			return strings.Join(lines, "\n")
+		},
+		"last": func(obj map[string]interface{}, key string) bool {
+			// Determine if this is the last key in a map (for comma handling in JSON)
+			if obj == nil {
+				return false
+			}
+			
+			// Get all keys from the map
+			keys := make([]string, 0, len(obj))
+			for k := range obj {
+				keys = append(keys, k)
+			}
+			
+			// Sort keys to ensure consistent order
+			sort.Strings(keys)
+			
+			// Check if the given key is the last one
+			return keys[len(keys)-1] == key
 		},
 	}
 
