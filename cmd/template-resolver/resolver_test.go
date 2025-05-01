@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"testing"
-	
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -44,12 +44,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with basic parameters
 	params := []pipelinev1.Param{
 		{
@@ -74,14 +74,14 @@ spec:
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the template was rendered
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: test-pipeline")
@@ -127,12 +127,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with custom validation steps parameter
 	params := []pipelinev1.Param{
 		{
@@ -170,14 +170,14 @@ params:
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the template was rendered with our custom steps
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: validation-step-1")
@@ -208,7 +208,9 @@ spec:
     
     # Custom steps via array parameter
     {{- if .CustomSteps }}
-    {{ .CustomSteps }}
+    {{- range $step := .CustomSteps }}
+    - {{ $step }}
+    {{- end}}
     {{- end }}
     
     # Second task with dependencies on custom steps
@@ -231,12 +233,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with both array and string parameters containing tasks
 	params := []pipelinev1.Param{
 		{
@@ -298,14 +300,14 @@ params:
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the template was rendered with both task types
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: custom-validation")
@@ -362,12 +364,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with multiple custom task parameters
 	params := []pipelinev1.Param{
 		{
@@ -413,14 +415,14 @@ params:
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the template was rendered with both custom step types
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: security-scan")
@@ -456,12 +458,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with a regular array parameter
 	params := []pipelinev1.Param{
 		{
@@ -486,6 +488,176 @@ spec:
 			},
 		},
 	}
+
+	// Execute the Resolve function
+	result, err := r.Resolve(context.Background(), params)
+
+	// Verify results
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Check that the template was rendered with the array values
+	renderedData := string(result.Data())
+	assert.Contains(t, renderedData, "- dev")
+	assert.Contains(t, renderedData, "- staging")
+	assert.Contains(t, renderedData, "- production")
+}
+
+// TestResolverArbitraryObjectParameters tests the resolver with arbitrary structured object parameters
+func TestResolverArbitraryObjectParameters(t *testing.T) {
+	// Create a mock fetcher with a template that uses structured objects with fromYAML
+	mockData := &mockFetcher{
+		templates: map[string]string{
+			"repo1:path1": `
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: arbitrary-object-pipeline
+spec:
+  params:
+    - name: app-name
+      type: string
+  tasks:
+    # Base task
+    - name: base-task
+      taskRef:
+        name: some-task
+      
+    # Use of arbitrary object in top-level YAML with fromYAML
+    {{- $deployConfig := fromYAML .DeploymentConfig }}
+    {{- if $deployConfig }}
+    - name: deploy-task
+      taskRef:
+        name: deployer
+      params:
+        - name: namespace
+          value: {{ $deployConfig.namespace }}
+        - name: replicas
+          value: "{{ $deployConfig.replicas }}"
+        {{- if $deployConfig.resources }}
+        - name: cpu-limit
+          value: "{{ $deployConfig.resources.limits.cpu }}"
+        - name: memory-limit
+          value: "{{ $deployConfig.resources.limits.memory }}"
+        {{- end }}
+    {{- end }}
+      
+    # Security scan config as structured object with fromYAML
+    {{- $securityConfig := fromYAML .SecurityConfig }}
+    {{- if $securityConfig }}
+    - name: security-scan
+      taskRef:
+        name: security-scanner
+      params:
+        {{- range $key, $value := $securityConfig }}
+        - name: {{ $key }}
+          value: "{{ $value }}"
+        {{- end }}
+    {{- end }}
+      
+    # Using complex nested objects with fromYAML
+    {{- $serviceMesh := fromYAML .ServiceMesh }}
+    {{- if $serviceMesh }}
+    - name: mesh-config
+      taskRef:
+        name: service-mesh-configurator
+      params:
+        - name: config
+          value: |
+            # Mesh Configuration
+            {{- if $serviceMesh.istio }}
+            istio:
+              enabled: {{ $serviceMesh.istio.enabled }}
+              {{- if $serviceMesh.istio.gateway }}
+              gateway:
+                name: {{ $serviceMesh.istio.gateway.name }}
+                namespace: {{ $serviceMesh.istio.gateway.namespace }}
+              {{- end }}
+              {{- if $serviceMesh.istio.virtualServices }}
+              virtualServices:
+              {{- range $serviceMesh.istio.virtualServices }}
+                - name: {{ .name }}
+                  hosts:
+                  {{- range .hosts }}
+                    - {{ . }}
+                  {{- end }}
+              {{- end }}
+              {{- end }}
+            {{- end }}
+    {{- end }}
+`,
+		},
+	}
+	
+	// Create resolver with mock fetcher
+	r := &resolver{
+		fetcher: mockData,
+	}
+	
+	// Test with complex structured object parameters
+	params := []pipelinev1.Param{
+		{
+			Name: "repository",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "repo1",
+			},
+		},
+		{
+			Name: "path",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "path1",
+			},
+		},
+		// Deployment config object parameter
+		{
+			Name: "deployment-config",
+			Value: pipelinev1.ParamValue{
+				Type: "string",
+				StringVal: `namespace: production
+replicas: 3
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi`,
+			},
+		},
+		// Security config object parameter
+		{
+			Name: "security-config",
+			Value: pipelinev1.ParamValue{
+				Type: "string",
+				StringVal: `scanType: vulnerability
+severity: high
+enableRemediation: true
+notifyEmail: security@example.com`,
+			},
+		},
+		// Complex nested service mesh object parameter
+		{
+			Name: "service-mesh",
+			Value: pipelinev1.ParamValue{
+				Type: "string",
+				StringVal: `istio:
+  enabled: true
+  gateway:
+    name: main-gateway
+    namespace: istio-system
+  virtualServices:
+    - name: api-service
+      hosts:
+        - api.example.com
+        - api-internal.example.com
+    - name: web-service
+      hosts:
+        - www.example.com`,
+			},
+		},
+	}
 	
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
@@ -494,9 +666,28 @@ spec:
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	
-	// Check that the template was rendered with the array values
+	// Check that the template was rendered with the structured objects
 	renderedData := string(result.Data())
-	assert.Contains(t, renderedData, "- dev")
-	assert.Contains(t, renderedData, "- staging")
-	assert.Contains(t, renderedData, "- production")
+	
+	// Check deployment config values were correctly rendered
+	assert.Contains(t, renderedData, "value: production")
+	assert.Contains(t, renderedData, "value: \"3\"")
+	assert.Contains(t, renderedData, "value: \"500m\"")
+	assert.Contains(t, renderedData, "value: \"512Mi\"")
+	
+	// Check security config was rendered with range over map
+	assert.Contains(t, renderedData, "name: scanType")
+	assert.Contains(t, renderedData, "value: \"vulnerability\"")
+	assert.Contains(t, renderedData, "name: severity")
+	assert.Contains(t, renderedData, "value: \"high\"")
+	assert.Contains(t, renderedData, "name: enableRemediation")
+	assert.Contains(t, renderedData, "value: \"true\"")
+	
+	// Check complex nested object was rendered with proper nesting
+	assert.Contains(t, renderedData, "enabled: true")
+	assert.Contains(t, renderedData, "name: main-gateway")
+	assert.Contains(t, renderedData, "namespace: istio-system")
+	assert.Contains(t, renderedData, "- name: api-service")
+	assert.Contains(t, renderedData, "- api.example.com")
+	assert.Contains(t, renderedData, "- www.example.com")
 }

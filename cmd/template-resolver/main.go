@@ -744,6 +744,26 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			yamlStr = strings.TrimPrefix(yamlStr, "---\n")
 			return strings.TrimSpace(yamlStr)
 		},
+		"fromYAML": func(yamlStr string) interface{} {
+			// Handle empty strings
+			if strings.TrimSpace(yamlStr) == "" {
+				return nil
+			}
+			
+			// Parse the YAML string into a structured object
+			var result interface{}
+			err := yaml.Unmarshal([]byte(yamlStr), &result)
+			if err != nil {
+				debugf("Error parsing YAML with fromYAML function: %v", err)
+				// Return a map with error information
+				return map[string]string{
+					"error": fmt.Sprintf("Error parsing YAML: %v", err),
+				}
+			}
+			
+			debugf("Successfully parsed YAML with fromYAML function: %v", result)
+			return result
+		},
 		"indent": func(spaces int, v string) string {
 			padding := strings.Repeat(" ", spaces)
 			lines := strings.Split(v, "\n")
