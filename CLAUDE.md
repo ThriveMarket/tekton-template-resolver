@@ -62,3 +62,4 @@ go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out
 - Test rendered templates with `kubectl apply --dry-run=client -f <file>` before using
 - Custom steps must have proper indentation for runAfter and taskSpec properties
 - For complex templates, consider using a tool like yq to validate the final YAML
+- We can't enumerate all possible properties of the yaml objects (tasks) because there are too many permutations that changes in user space.
