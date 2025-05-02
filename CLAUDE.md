@@ -40,6 +40,17 @@ open coverage.html
 go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out
 ```
 
+## Project Structure
+- cmd/template-resolver/ - Main application code
+  - config.go - Configuration and environment variables
+  - fetcher.go - Template fetching logic (Git/GitHub/Gist)
+  - main.go - Application entry point
+  - resolver.go - Core resolver implementation
+  - server.go - HTTP server implementation
+  - template.go - Template rendering and YAML utilities
+  - types.go - Resource type definitions
+  - utils.go - Helper functions
+
 ## Code Style Guidelines
 - Follow standard Go conventions
 - Import ordering: standard library, third-party, internal packages
@@ -63,3 +74,5 @@ go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out
 - Custom steps must have proper indentation for runAfter and taskSpec properties
 - For complex templates, consider using a tool like yq to validate the final YAML
 - We can't enumerate all possible properties of the yaml objects (tasks) because there are too many permutations that changes in user space.
+- Always use typeIs checks in templates to handle both string and structured object parameters
+- Use the toYAML function to render structured objects in templates

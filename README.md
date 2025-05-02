@@ -92,10 +92,18 @@ spec:
 When creating templates, you can access any parameter by its camel-cased name. For parameters containing tasks, you also have access to the task names:
 
 ```yaml
-# Example: Using a task parameter
+# Example: Using a task parameter with type checking
 {{- if .ValidationSteps }}
-# Include the validation tasks
-{{ .ValidationSteps }}
+{{- if typeIs "string" .ValidationSteps }}
+{{- $steps := fromYAML .ValidationSteps }}
+{{- range $i, $step := $steps }}
+- {{ toYAML $step }}
+{{- end }}
+{{- else }}
+{{- range $i, $step := .ValidationSteps }}
+- {{ toYAML $step }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 # Example: Using task names from parameters
@@ -184,6 +192,20 @@ export KO_DOCKER_REPO=kind.local
 
 This ensures that container images built with ko are pushed to your local Kind registry.
 
+### Project Structure
+
+The codebase is organized into the following components:
+
+- **cmd/template-resolver/** - Main application code
+  - **config.go** - Configuration and environment variables
+  - **fetcher.go** - Template fetching logic (Git/GitHub/Gist)
+  - **main.go** - Application entry point
+  - **resolver.go** - Core resolver implementation
+  - **server.go** - HTTP server implementation
+  - **template.go** - Template rendering and YAML utilities
+  - **types.go** - Resource type definitions
+  - **utils.go** - Helper functions
+
 ### Using Taskfile for Development
 
 This repository includes a Taskfile that simplifies common development operations. To see all available tasks, run:
@@ -239,6 +261,8 @@ For more detailed information about available commands, examine the Taskfile.yml
 - **Consistent Naming Convention**: All parameters are converted to camelCase for template use
 - **Task Name Extraction**: Task names are automatically extracted for use in dependencies
 - **Flexible Parameter Formats**: Works with both array parameters and string parameters containing YAML
+- **Type-Safe Templates**: Use `typeIs` checks in templates to handle both string and structured parameters
+- **YAML Object Rendering**: Use `toYAML` function to render structured objects in templates
 
 ## Roadmap
 
