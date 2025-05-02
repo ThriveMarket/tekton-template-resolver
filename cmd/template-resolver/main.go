@@ -34,7 +34,7 @@ const (
 	EnvResolutionTimeout = "RESOLUTION_TIMEOUT"
 	EnvGitCloneDepth     = "GIT_CLONE_DEPTH"
 	EnvGitBranch         = "GIT_DEFAULT_BRANCH"
-
+	
 	// Default values
 	DefaultHTTPTimeout       = 30 * time.Second
 	DefaultResolutionTimeout = 60 * time.Second
@@ -44,11 +44,11 @@ const (
 
 // Global config flags
 var (
-	debugMode         bool
-	httpTimeout       time.Duration
+	debugMode bool
+	httpTimeout time.Duration
 	resolutionTimeout time.Duration
-	gitCloneDepth     int
-	gitDefaultBranch  string
+	gitCloneDepth int
+	gitDefaultBranch string
 )
 
 // debugf prints debug messages only when debug mode is enabled
@@ -93,7 +93,7 @@ func main() {
 	// This allows us to handle flags differently in each mode
 	isStandalone := false
 	standalonePort := 8080
-
+	
 	// Pre-scan args for standalone flag without using the flag package
 	for i, arg := range os.Args {
 		if arg == "-standalone" || arg == "--standalone" {
@@ -106,32 +106,32 @@ func main() {
 			debugMode = true
 		}
 	}
-
+	
 	// Check environment variable for debug mode
 	if debugEnv := getEnvWithDefault(EnvDebug, ""); debugEnv == "true" || debugEnv == "1" {
 		debugMode = true
 	}
-
+	
 	// Load configuration from environment variables
 	httpTimeout = getEnvWithDefaultDuration(EnvHTTPTimeout, DefaultHTTPTimeout)
 	resolutionTimeout = getEnvWithDefaultDuration(EnvResolutionTimeout, DefaultResolutionTimeout)
 	gitCloneDepth = getEnvWithDefaultInt(EnvGitCloneDepth, DefaultGitCloneDepth)
 	gitDefaultBranch = getEnvWithDefault(EnvGitBranch, DefaultGitBranch)
-
+	
 	if debugMode {
 		log.Println("Debug mode enabled")
 		log.Printf("Configuration: HTTP Timeout=%v, Resolution Timeout=%v, Git Clone Depth=%d, Git Default Branch=%s",
 			httpTimeout, resolutionTimeout, gitCloneDepth, gitDefaultBranch)
 	}
-
+	
 	// Create a new resolver instance
 	resolver := NewResolver()
-
+	
 	// Initialize the resolver
 	if err := resolver.Initialize(context.Background()); err != nil {
 		log.Fatalf("Failed to initialize resolver: %v", err)
 	}
-
+	
 	// Choose between standalone mode and Knative mode
 	if isStandalone {
 		// In standalone mode, explicitly parse our own flags
@@ -142,7 +142,7 @@ func main() {
 		if err := fs.Parse(os.Args[1:]); err != nil {
 			log.Fatalf("Error parsing flags: %v", err)
 		}
-
+		
 		runStandalone(resolver, standalonePort)
 	} else {
 		// In Knative mode, let Knative handle all flag parsing
@@ -157,41 +157,41 @@ func main() {
 // without requiring the Knative/Tekton infrastructure
 func runStandalone(resolver *resolver, port int) {
 	log.Printf("Starting standalone server on port %d", port)
-
+	
 	http.HandleFunc("/resolve", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-
+		
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to read request body: %v", err), http.StatusBadRequest)
 			return
 		}
-
+		
 		var request struct {
 			Parameters []pipelinev1.Param `json:"parameters"`
 		}
-
+		
 		if err := json.Unmarshal(body, &request); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to parse request: %v", err), http.StatusBadRequest)
 			return
 		}
-
+		
 		// Validate parameters
 		if err := resolver.ValidateParams(r.Context(), request.Parameters); err != nil {
 			http.Error(w, fmt.Sprintf("Invalid parameters: %v", err), http.StatusBadRequest)
 			return
 		}
-
+		
 		// Resolve the template
 		result, err := resolver.Resolve(r.Context(), request.Parameters)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to resolve template: %v", err), http.StatusInternalServerError)
 			return
 		}
-
+		
 		// Return the resolved template
 		w.Header().Set("Content-Type", "application/yaml")
 		w.WriteHeader(http.StatusOK)
@@ -199,7 +199,7 @@ func runStandalone(resolver *resolver, port int) {
 			log.Printf("Error writing response: %v", err)
 		}
 	})
-
+	
 	// Add a health check endpoint
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -207,7 +207,7 @@ func runStandalone(resolver *resolver, port int) {
 			log.Printf("Error writing health response: %v", err)
 		}
 	})
-
+	
 	// Add a readiness endpoint
 	http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -215,7 +215,7 @@ func runStandalone(resolver *resolver, port int) {
 			log.Printf("Error writing readiness response: %v", err)
 		}
 	})
-
+	
 	// Start the server
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
@@ -231,7 +231,7 @@ type TemplateFetcher interface {
 type gitTemplateFetcher struct{}
 
 // resolver is the main implementation of the Tekton resolver
-type resolver struct {
+type resolver struct{
 	fetcher TemplateFetcher
 }
 
@@ -286,15 +286,19 @@ func (r *resolver) ValidateParams(ctx context.Context, params []pipelinev1.Param
 }
 
 // Resolve fetches the template from Git, applies parameters, and returns the rendered template.
+// For YAML array parameters that look like Tekton tasks:
+// - The structured objects are stored directly in templateData[camelName] for iteration
+// - The task names are stored in templateData[camelName+"Names"] for runAfter references
+// - The original string is also stored as templateData[camelName+"Raw"] for direct fromYAML usage
 func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (framework.ResolvedResource, error) {
 	debugf("Resolve called with %d params", len(params))
-
+	
 	// Extract required parameters
 	var repository, path string
-
+	
 	// Dynamic parameter map to pass to template
 	templateData := make(map[string]interface{})
-
+	
 	// First, extract required parameters
 	for _, param := range params {
 		switch param.Name {
@@ -308,7 +312,7 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 			templateData[PathParam] = path
 		}
 	}
-
+	
 	// Fetch template from Git repository
 	templateContent, err := r.fetcher.FetchTemplate(repository, path)
 	if err != nil {
@@ -318,27 +322,90 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	// Process all parameters including the required ones we already set
 	for _, param := range params {
 		debugf("Processing param: %s (type: %s)", param.Name, param.Value.Type)
-
+		
 		// Convert parameter name to camel case for template
 		camelName := toCamelCase(param.Name)
-
+		
 		// Skip parameters we've already set (repository and path)
 		// and skip if we've already processed this parameter name
-		if param.Name == RepositoryParam || param.Name == PathParam {
+		if (param.Name == RepositoryParam || param.Name == PathParam) {
 			continue
 		}
-
+		
 		// Also skip if we've already set this parameter name through another parameter
 		if _, exists := templateData[camelName]; exists {
 			continue
 		}
-
+		
 		// Process based on parameter type
 		switch param.Value.Type {
 		case pipelinev1.ParamTypeArray:
 			debugf("Processing array parameter %s", param.Name)
-
-			// Try to parse each array element as a task definition
+			
+			// Try to parse structured YAML arrays
+			if strings.Contains(param.Name, "steps") || strings.Contains(param.Name, "tasks") {
+				// First try to parse the array directly as JSON
+				// This is needed for complex YAML structures
+				allItemsJSON := "["
+				for i, val := range param.Value.ArrayVal {
+					if i > 0 {
+						allItemsJSON += ","
+					}
+					allItemsJSON += val
+				}
+				allItemsJSON += "]"
+				
+				debugf("Trying to parse array as JSON: %s", allItemsJSON)
+				
+				var taskObjects []map[string]interface{}
+				if err := json.Unmarshal([]byte(allItemsJSON), &taskObjects); err == nil {
+					debugf("Successfully parsed JSON array with %d objects", len(taskObjects))
+					
+					// Create a YAML string for the template to use with fromYAML
+					yamlBytes, err := yaml.Marshal(taskObjects)
+					if err == nil {
+						yamlString := string(yamlBytes)
+						debugf("Adding YAML string as %s", camelName)
+						templateData[camelName] = yamlString
+					} else {
+						debugf("Failed to convert objects to YAML: %v, using original JSON", err)
+						templateData[camelName] = allItemsJSON
+					}
+					
+					// Store the structured objects with a different key
+					structuredKey := camelName + "Objects"
+					debugf("Adding structured task objects as %s", structuredKey) 
+					templateData[structuredKey] = taskObjects
+					
+					// Extract task names (for runAfter references)
+					var taskNames []string
+					for _, task := range taskObjects {
+						if name, ok := task["name"].(string); ok {
+							taskNames = append(taskNames, name)
+						}
+					}
+					
+					// Add names for reference in templates
+					if len(taskNames) > 0 {
+						namesParam := camelName + "Names"
+						debugf("Adding task names as %s: %v", namesParam, taskNames)
+						templateData[namesParam] = taskNames
+						
+						// Add last task name for convenience
+						lastNameParam := camelName + "Name"
+						lastTaskName := taskNames[len(taskNames)-1]
+						debugf("Adding last task name as %s: %s", lastNameParam, lastTaskName)
+						templateData[lastNameParam] = lastTaskName
+					}
+					
+					// Skip the rest of the processing
+					continue
+				}
+				
+				debugf("Failed to parse structured JSON array: %v", err)
+			}
+			
+			// Fall back to standard array processing
 			var tasks []map[string]interface{}
 			for i, arrayItem := range param.Value.ArrayVal {
 				var task map[string]interface{}
@@ -346,59 +413,60 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 					log.Printf("WARNING: Failed to parse %s array item %d as YAML: %v", param.Name, i, err)
 					continue
 				}
-
+				
 				// Check if this looks like a task (has a "name" field)
 				if _, hasName := task["name"]; hasName {
 					tasks = append(tasks, task)
 				}
 			}
-
-			// If we found tasks, extract names and format them
+			
+			// If we found tasks, store them as a YAML string and extract names
 			if len(tasks) > 0 {
-				// Format tasks for YAML inclusion
-				tasksBytes, err := yaml.Marshal(tasks)
-				if err != nil {
-					log.Printf("WARNING: Failed to marshal %s tasks: %v", param.Name, err)
+				// Create a YAML string for the template to use with fromYAML
+				yamlBytes, err := yaml.Marshal(tasks)
+				if err == nil {
+					yamlString := string(yamlBytes)
+					debugf("Adding YAML string as %s", camelName)
+					templateData[camelName] = yamlString
 				} else {
-					formattedTasks, err := formatTasksYAML(string(tasksBytes))
-					if err != nil {
-						log.Printf("WARNING: Failed to format %s: %v", param.Name, err)
-					} else {
-						// Add formatted tasks to template data
-						debugf("Adding tasks as %s", camelName)
-						templateData[camelName] = formattedTasks
-
-						// Extract task names
-						var taskNames []string
-						for _, task := range tasks {
-							if name, ok := task["name"].(string); ok {
-								taskNames = append(taskNames, name)
-							}
-						}
-
-						// Add task names to template data
-						if len(taskNames) > 0 {
-							namesParam := camelName + "Names"
-							debugf("Adding task names as %s", namesParam)
-							templateData[namesParam] = taskNames
-
-							// Add last task name for convenience
-							lastNameParam := camelName + "Name"
-							lastTaskName := taskNames[len(taskNames)-1]
-							debugf("Adding last task name as %s: %s", lastNameParam, lastTaskName)
-							templateData[lastNameParam] = lastTaskName
-						}
+					debugf("Failed to convert tasks to YAML: %v", err)
+					templateData[camelName] = ""
+				}
+				
+				// Store the task objects with a different key
+				structuredKey := camelName + "Objects"
+				debugf("Adding structured task objects as %s", structuredKey)
+				templateData[structuredKey] = tasks
+				
+				// Extract task names
+				var taskNames []string
+				for _, task := range tasks {
+					if name, ok := task["name"].(string); ok {
+						taskNames = append(taskNames, name)
 					}
+				}
+				
+				// Add task names to template data
+				if len(taskNames) > 0 {
+					namesParam := camelName + "Names"
+					debugf("Adding task names as %s", namesParam)
+					templateData[namesParam] = taskNames
+					
+					// Add last task name for convenience
+					lastNameParam := camelName + "Name"
+					lastTaskName := taskNames[len(taskNames)-1]
+					debugf("Adding last task name as %s: %s", lastNameParam, lastTaskName)
+					templateData[lastNameParam] = lastTaskName
 				}
 			} else {
 				// Just a regular array parameter
 				templateData[camelName] = param.Value.ArrayVal
 			}
-
+			
 		case pipelinev1.ParamTypeObject:
 			// Pass through object parameters
 			templateData[camelName] = param.Value.ObjectVal
-
+			
 		default: // String or other type
 			// Try to parse string as YAML tasks if it looks like YAML
 			if param.Value.Type == pipelinev1.ParamTypeString && strings.Contains(param.Value.StringVal, "name:") {
@@ -409,42 +477,42 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 						// Not valid YAML tasks, treat as a regular string
 						templateData[camelName] = paramVal
 					} else if len(tasks) > 0 {
-						// It parsed as tasks, handle it like array tasks
-						tasksBytes, err := yaml.Marshal(tasks)
-						if err != nil {
-							log.Printf("WARNING: Failed to marshal %s tasks: %v", param.Name, err)
-							templateData[camelName] = paramVal
+						// It parsed as tasks, store as YAML string for templates
+						// Create a YAML string for the template to use with fromYAML
+						yamlBytes, err := yaml.Marshal(tasks)
+						if err == nil {
+							yamlString := string(yamlBytes)
+							debugf("Adding YAML string as %s", camelName)
+							templateData[camelName] = yamlString
 						} else {
-							formattedTasks, err := formatTasksYAML(string(tasksBytes))
-							if err != nil {
-								log.Printf("WARNING: Failed to format %s: %v", param.Name, err)
-								templateData[camelName] = paramVal
-							} else {
-								// Add formatted tasks to template data
-								debugf("Adding string tasks as %s", camelName)
-								templateData[camelName] = formattedTasks
-
-								// Extract task names
-								var taskNames []string
-								for _, task := range tasks {
-									if name, ok := task["name"].(string); ok {
-										taskNames = append(taskNames, name)
-									}
-								}
-
-								// Add task names to template data
-								if len(taskNames) > 0 {
-									namesParam := camelName + "Names"
-									debugf("Adding task names as %s", namesParam)
-									templateData[namesParam] = taskNames
-
-									// Add last task name for convenience
-									lastNameParam := camelName + "Name"
-									lastTaskName := taskNames[len(taskNames)-1]
-									debugf("Adding last task name as %s: %s", lastNameParam, lastTaskName)
-									templateData[lastNameParam] = lastTaskName
-								}
+							debugf("Failed to convert tasks to YAML: %v", err)
+							templateData[camelName] = paramVal
+						}
+						
+						// Store the task objects with a different key
+						structuredKey := camelName + "Objects"
+						debugf("Adding structured task objects as %s", structuredKey)
+						templateData[structuredKey] = tasks
+						
+						// Extract task names
+						var taskNames []string
+						for _, task := range tasks {
+							if name, ok := task["name"].(string); ok {
+								taskNames = append(taskNames, name)
 							}
+						}
+						
+						// Add task names to template data
+						if len(taskNames) > 0 {
+							namesParam := camelName + "Names"
+							debugf("Adding task names as %s", namesParam)
+							templateData[namesParam] = taskNames
+							
+							// Add last task name for convenience
+							lastNameParam := camelName + "Name"
+							lastTaskName := taskNames[len(taskNames)-1]
+							debugf("Adding last task name as %s: %s", lastNameParam, lastTaskName)
+							templateData[lastNameParam] = lastTaskName
 						}
 					} else {
 						// Empty tasks array, use empty string
@@ -750,7 +818,7 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			if strings.TrimSpace(yamlStr) == "" {
 				return nil
 			}
-
+			
 			// Parse the YAML string into a structured object
 			var result interface{}
 			err := yaml.Unmarshal([]byte(yamlStr), &result)
@@ -761,7 +829,7 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 					"error": fmt.Sprintf("Error parsing YAML: %v", err),
 				}
 			}
-
+			
 			debugf("Successfully parsed YAML with fromYAML function: %v", result)
 			return result
 		},
@@ -782,45 +850,100 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			if obj == nil {
 				return false
 			}
-
+			
 			// Get all keys from the map
 			keys := make([]string, 0, len(obj))
 			for k := range obj {
 				keys = append(keys, k)
 			}
-
+			
 			// Sort keys to ensure consistent order
 			sort.Strings(keys)
-
+			
 			// Check if the given key is the last one
 			return keys[len(keys)-1] == key
+		},
+		"typeIs": func(typeName string, val interface{}) bool {
+			return strings.Contains(fmt.Sprintf("%T", val), typeName)
+		},
+		"toString": func(val interface{}) string {
+			// Convert any value to a string
+			switch v := val.(type) {
+			case string:
+				return v
+			case []byte:
+				return string(v)
+			case error:
+				return v.Error()
+			case fmt.Stringer:
+				return v.String()
+			default:
+				if val == nil {
+					return ""
+				}
+				
+				// Try to marshal to JSON
+				if bytes, err := json.Marshal(val); err == nil {
+					return string(bytes)
+				}
+				
+				// Fallback to %v formatting
+				return fmt.Sprintf("%v", val)
+			}
 		},
 		"toYAML": func(obj interface{}) string {
 			// Convert an object back to a YAML string for template inclusion
 			if obj == nil {
 				return ""
 			}
-
+			
 			// Marshal the object to YAML
 			yamlBytes, err := yaml.Marshal(obj)
 			if err != nil {
 				debugf("Error converting object to YAML with toYAML function: %v", err)
 				return fmt.Sprintf("Error: %v", err)
 			}
-
+			
 			// Convert to string and clean up
 			yamlStr := string(yamlBytes)
-
-			// Remove the document separator and ensure proper indentation
+			
+			// Remove the document separator
 			yamlStr = strings.TrimPrefix(yamlStr, "---\n")
-
+			
 			// Remove the leading dash for items in a list (will be added by the template)
 			yamlStr = strings.TrimPrefix(yamlStr, "- ")
-
-			// Trim trailing newline
+			
+			// Process each line to normalize indentation
+			lines := strings.Split(yamlStr, "\n")
+			
+			// Find the minimum indentation level (ignore empty lines)
+			minIndent := -1
+			for _, line := range lines {
+				if len(strings.TrimSpace(line)) == 0 {
+					continue // Skip empty lines
+				}
+				
+				// Count leading spaces
+				indent := len(line) - len(strings.TrimLeft(line, " "))
+				if minIndent == -1 || indent < minIndent {
+					minIndent = indent
+				}
+			}
+			
+			// Remove the minimum indentation from each line
+			if minIndent > 0 {
+				for i, line := range lines {
+					if len(line) >= minIndent {
+						lines[i] = line[minIndent:]
+					}
+				}
+			}
+			
+			// Reassemble the YAML string and trim any trailing whitespace
+			yamlStr = strings.Join(lines, "\n")
 			yamlStr = strings.TrimSpace(yamlStr)
-
-			debugf("toYAML function result: %s", yamlStr)
+			
+			debugf("toYAML function result after indentation fix: %s", yamlStr)
 			return yamlStr
 		},
 	}

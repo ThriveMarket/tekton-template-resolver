@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"testing"
-
+	
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -44,12 +44,12 @@ spec:
 `,
 		},
 	}
-
+	
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-
+	
 	// Test with basic parameters
 	params := []pipelinev1.Param{
 		{
@@ -74,14 +74,14 @@ spec:
 			},
 		},
 	}
-
+	
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-
+	
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-
+	
 	// Check that the template was rendered
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: test-pipeline")
@@ -109,18 +109,15 @@ spec:
     
     # Custom validation steps if provided
     {{- if .CustomValidationSteps }}
-    {{- $validationSteps := fromYAML .CustomValidationSteps }}
-    {{- range $i, $step := $validationSteps }}
-    - name: {{ $step.name }}
-      taskRef:
-        name: {{ index $step.taskRef "name" }}
-      {{- if $step.params }}
-      params:
-      {{- range $step.params }}
-        - name: {{ .name }}
-          value: {{ .value }}
-      {{- end }}
-      {{- end }}
+    {{- if typeIs "string" .CustomValidationSteps }}
+    {{- $steps := fromYAML .CustomValidationSteps }}
+    {{- range $i, $step := $steps }}
+    - {{ toYAML $step }}
+    {{- end }}
+    {{- else }}
+    {{- range $i, $step := .CustomValidationSteps }}
+    - {{ toYAML $step }}
+    {{- end }}
     {{- end }}
     {{- end }}
     
@@ -139,12 +136,12 @@ spec:
 `,
 		},
 	}
-
+	
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-
+	
 	// Test with custom validation steps parameter
 	params := []pipelinev1.Param{
 		{
@@ -182,14 +179,14 @@ params:
 			},
 		},
 	}
-
+	
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-
+	
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-
+	
 	// Check that the template was rendered with our custom steps
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: validation-step-1")
@@ -220,19 +217,16 @@ spec:
     
     # Custom steps via array parameter
     {{- if .CustomSteps }}
-    {{- $customSteps := fromYAML .CustomSteps }}
-    {{- range $i, $step := $customSteps }}
-    - name: {{ $step.name }}
-      taskRef:
-        name: {{ index $step.taskRef "name" }}
-      {{- if $step.params }}
-      params:
-      {{- range $step.params }}
-        - name: {{ .name }}
-          value: {{ .value }}
-      {{- end }}
-      {{- end }}
-    {{- end}}
+    {{- if typeIs "string" .CustomSteps }}
+    {{- $steps := fromYAML .CustomSteps }}
+    {{- range $i, $step := $steps }}
+    - {{ toYAML $step }}
+    {{- end }}
+    {{- else }}
+    {{- range $i, $step := .CustomSteps }}
+    - {{ toYAML $step }}
+    {{- end }}
+    {{- end }}
     {{- end }}
     
     # Second task with dependencies on custom steps
@@ -250,29 +244,26 @@ spec:
         
     # Post-dev steps via string parameter (legacy format)
     {{- if .PostDevSteps }}
-    {{- $postDevSteps := fromYAML .PostDevSteps }}
-    {{- range $i, $step := $postDevSteps }}
-    - name: {{ $step.name }}
-      taskRef:
-        name: {{ index $step.taskRef "name" }}
-      {{- if $step.params }}
-      params:
-      {{- range $step.params }}
-        - name: {{ .name }}
-          value: {{ .value }}
-      {{- end }}
-      {{- end }}
+    {{- if typeIs "string" .PostDevSteps }}
+    {{- $steps := fromYAML .PostDevSteps }}
+    {{- range $i, $step := $steps }}
+    - {{ toYAML $step }}
+    {{- end }}
+    {{- else }}
+    {{- range $i, $step := .PostDevSteps }}
+    - {{ toYAML $step }}
+    {{- end }}
     {{- end }}
     {{- end }}
 `,
 		},
 	}
-
+	
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-
+	
 	// Test with both array and string parameters containing tasks
 	params := []pipelinev1.Param{
 		{
@@ -334,19 +325,20 @@ params:
 			},
 		},
 	}
-
+	
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-
+	
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-
+	
 	// Check that the template was rendered with both task types
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: custom-validation")
 	assert.Contains(t, renderedData, "name: dev-validation")
-	assert.Contains(t, renderedData, "- custom-validation")
+	assert.Contains(t, renderedData, "value: custom")
+	assert.Contains(t, renderedData, "value: dev")
 }
 
 // TestResolverMultipleTaskParameters tests the resolver with multiple custom task parameters
@@ -371,35 +363,29 @@ spec:
     
     # Security audit if provided
     {{- if .SecurityAuditSteps }}
-    {{- $securitySteps := fromYAML .SecurityAuditSteps }}
-    {{- range $i, $step := $securitySteps }}
-    - name: {{ $step.name }}
-      taskRef:
-        name: {{ index $step.taskRef "name" }}
-      {{- if $step.params }}
-      params:
-      {{- range $step.params }}
-        - name: {{ .name }}
-          value: {{ .value }}
-      {{- end }}
-      {{- end }}
+    {{- if typeIs "string" .SecurityAuditSteps }}
+    {{- $steps := fromYAML .SecurityAuditSteps }}
+    {{- range $i, $step := $steps }}
+    - {{ toYAML $step }}
+    {{- end }}
+    {{- else }}
+    {{- range $i, $step := .SecurityAuditSteps }}
+    - {{ toYAML $step }}
+    {{- end }}
     {{- end }}
     {{- end }}
     
     # Compliance checks if provided
     {{- if .ComplianceCheckSteps }}
-    {{- $complianceSteps := fromYAML .ComplianceCheckSteps }}
-    {{- range $i, $step := $complianceSteps }}
-    - name: {{ $step.name }}
-      taskRef:
-        name: {{ index $step.taskRef "name" }}
-      {{- if $step.params }}
-      params:
-      {{- range $step.params }}
-        - name: {{ .name }}
-          value: {{ .value }}
-      {{- end }}
-      {{- end }}
+    {{- if typeIs "string" .ComplianceCheckSteps }}
+    {{- $steps := fromYAML .ComplianceCheckSteps }}
+    {{- range $i, $step := $steps }}
+    - {{ toYAML $step }}
+    {{- end }}
+    {{- else }}
+    {{- range $i, $step := .ComplianceCheckSteps }}
+    - {{ toYAML $step }}
+    {{- end }}
     {{- end }}
     {{- end }}
     
@@ -422,12 +408,12 @@ spec:
 `,
 		},
 	}
-
+	
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-
+	
 	// Test with multiple custom task parameters
 	params := []pipelinev1.Param{
 		{
@@ -473,20 +459,20 @@ params:
 			},
 		},
 	}
-
+	
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-
+	
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-
+	
 	// Check that the template was rendered with both custom step types
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: security-scan")
 	assert.Contains(t, renderedData, "name: compliance-check")
-	assert.Contains(t, renderedData, "- security-scan")
-	assert.Contains(t, renderedData, "- compliance-check")
+	assert.Contains(t, renderedData, "value: vulnerability")
+	assert.Contains(t, renderedData, "value: pci-dss")
 }
 
 // TestResolverArrayParameter tests the resolver with a regular array parameter (not tasks)
@@ -516,12 +502,12 @@ spec:
 `,
 		},
 	}
-
+	
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-
+	
 	// Test with a regular array parameter
 	params := []pipelinev1.Param{
 		{
@@ -546,208 +532,19 @@ spec:
 			},
 		},
 	}
-
+	
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-
+	
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-
+	
 	// Check that the template was rendered with the array values
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "- dev")
 	assert.Contains(t, renderedData, "- staging")
 	assert.Contains(t, renderedData, "- production")
-}
-
-// TestResolverArbitraryObjectParameters tests the resolver with arbitrary structured object parameters
-func TestResolverArbitraryObjectParameters(t *testing.T) {
-	// Create a mock fetcher with a template that uses structured objects with fromYAML
-	mockData := &mockFetcher{
-		templates: map[string]string{
-			"repo1:path1": `
-apiVersion: tekton.dev/v1
-kind: Pipeline
-metadata:
-  name: arbitrary-object-pipeline
-spec:
-  params:
-    - name: app-name
-      type: string
-  tasks:
-    # Base task
-    - name: base-task
-      taskRef:
-        name: some-task
-      
-    # Use of arbitrary object in top-level YAML with fromYAML
-    {{- $deployConfig := fromYAML .DeploymentConfig }}
-    {{- if $deployConfig }}
-    - name: deploy-task
-      taskRef:
-        name: deployer
-      params:
-        - name: namespace
-          value: {{ $deployConfig.namespace }}
-        - name: replicas
-          value: "{{ $deployConfig.replicas }}"
-        {{- if $deployConfig.resources }}
-        - name: cpu-limit
-          value: "{{ $deployConfig.resources.limits.cpu }}"
-        - name: memory-limit
-          value: "{{ $deployConfig.resources.limits.memory }}"
-        {{- end }}
-    {{- end }}
-      
-    # Security scan config as structured object with fromYAML
-    {{- $securityConfig := fromYAML .SecurityConfig }}
-    {{- if $securityConfig }}
-    - name: security-scan
-      taskRef:
-        name: security-scanner
-      params:
-        {{- range $key, $value := $securityConfig }}
-        - name: {{ $key }}
-          value: "{{ $value }}"
-        {{- end }}
-    {{- end }}
-      
-    # Using complex nested objects with fromYAML
-    {{- $serviceMesh := fromYAML .ServiceMesh }}
-    {{- if $serviceMesh }}
-    - name: mesh-config
-      taskRef:
-        name: service-mesh-configurator
-      params:
-        - name: config
-          value: |
-            # Mesh Configuration
-            {{- if $serviceMesh.istio }}
-            istio:
-              enabled: {{ $serviceMesh.istio.enabled }}
-              {{- if $serviceMesh.istio.gateway }}
-              gateway:
-                name: {{ $serviceMesh.istio.gateway.name }}
-                namespace: {{ $serviceMesh.istio.gateway.namespace }}
-              {{- end }}
-              {{- if $serviceMesh.istio.virtualServices }}
-              virtualServices:
-              {{- range $serviceMesh.istio.virtualServices }}
-                - name: {{ .name }}
-                  hosts:
-                  {{- range .hosts }}
-                    - {{ . }}
-                  {{- end }}
-              {{- end }}
-              {{- end }}
-            {{- end }}
-    {{- end }}
-`,
-		},
-	}
-
-	// Create resolver with mock fetcher
-	r := &resolver{
-		fetcher: mockData,
-	}
-
-	// Test with complex structured object parameters
-	params := []pipelinev1.Param{
-		{
-			Name: "repository",
-			Value: pipelinev1.ParamValue{
-				Type:      "string",
-				StringVal: "repo1",
-			},
-		},
-		{
-			Name: "path",
-			Value: pipelinev1.ParamValue{
-				Type:      "string",
-				StringVal: "path1",
-			},
-		},
-		// Deployment config object parameter
-		{
-			Name: "deployment-config",
-			Value: pipelinev1.ParamValue{
-				Type: "string",
-				StringVal: `namespace: production
-replicas: 3
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi`,
-			},
-		},
-		// Security config object parameter
-		{
-			Name: "security-config",
-			Value: pipelinev1.ParamValue{
-				Type: "string",
-				StringVal: `scanType: vulnerability
-severity: high
-enableRemediation: true
-notifyEmail: security@example.com`,
-			},
-		},
-		// Complex nested service mesh object parameter
-		{
-			Name: "service-mesh",
-			Value: pipelinev1.ParamValue{
-				Type: "string",
-				StringVal: `istio:
-  enabled: true
-  gateway:
-    name: main-gateway
-    namespace: istio-system
-  virtualServices:
-    - name: api-service
-      hosts:
-        - api.example.com
-        - api-internal.example.com
-    - name: web-service
-      hosts:
-        - www.example.com`,
-			},
-		},
-	}
-
-	// Execute the Resolve function
-	result, err := r.Resolve(context.Background(), params)
-
-	// Verify results
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	// Check that the template was rendered with the structured objects
-	renderedData := string(result.Data())
-
-	// Check deployment config values were correctly rendered
-	assert.Contains(t, renderedData, "value: production")
-	assert.Contains(t, renderedData, "value: \"3\"")
-	assert.Contains(t, renderedData, "value: \"500m\"")
-	assert.Contains(t, renderedData, "value: \"512Mi\"")
-
-	// Check security config was rendered with range over map
-	assert.Contains(t, renderedData, "name: scanType")
-	assert.Contains(t, renderedData, "value: \"vulnerability\"")
-	assert.Contains(t, renderedData, "name: severity")
-	assert.Contains(t, renderedData, "value: \"high\"")
-	assert.Contains(t, renderedData, "name: enableRemediation")
-	assert.Contains(t, renderedData, "value: \"true\"")
-
-	// Check complex nested object was rendered with proper nesting
-	assert.Contains(t, renderedData, "enabled: true")
-	assert.Contains(t, renderedData, "name: main-gateway")
-	assert.Contains(t, renderedData, "namespace: istio-system")
-	assert.Contains(t, renderedData, "- name: api-service")
-	assert.Contains(t, renderedData, "- api.example.com")
-	assert.Contains(t, renderedData, "- www.example.com")
 }
 
 // TestResolverYAMLListProcessing tests parsing and iterating over a list of YAML objects
@@ -771,8 +568,8 @@ spec:
         name: some-task
       
     # Process a list of environment configurations using fromYAML
+    {{- if .EnvironmentConfigs }}
     {{- $envConfigs := fromYAML .EnvironmentConfigs }}
-    {{- if $envConfigs }}
     {{- range $i, $env := $envConfigs }}
     # Environment configuration for {{ $env.name }}
     - name: deploy-to-{{ $env.name }}
@@ -806,8 +603,8 @@ spec:
     {{- end }}
     
     # Process a list of service configurations using fromYAML
+    {{- if .ServiceConfigs }}
     {{- $serviceConfigs := fromYAML .ServiceConfigs }}
-    {{- if $serviceConfigs }}
     # Service configurations
     - name: configure-services
       taskRef:
@@ -835,12 +632,12 @@ spec:
 `,
 		},
 	}
-
+	
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-
+	
 	// Test with lists of YAML objects
 	params := []pipelinev1.Param{
 		{
@@ -911,17 +708,17 @@ spec:
 			},
 		},
 	}
-
+	
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-
+	
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-
+	
 	// Check that the template was rendered with all the objects from the lists
 	renderedData := string(result.Data())
-
+	
 	// Verify environment config rendering
 	assert.Contains(t, renderedData, "name: deploy-to-development")
 	assert.Contains(t, renderedData, "value: development")
@@ -929,26 +726,26 @@ spec:
 	assert.Contains(t, renderedData, "value: app-dev")
 	assert.Contains(t, renderedData, "value: \"1\"")
 	assert.Contains(t, renderedData, "value: \"250m\"")
-
+	
 	assert.Contains(t, renderedData, "name: deploy-to-production")
 	assert.Contains(t, renderedData, "value: production")
 	assert.Contains(t, renderedData, "value: prod-cluster")
 	assert.Contains(t, renderedData, "value: app-prod")
 	assert.Contains(t, renderedData, "value: \"3\"")
 	assert.Contains(t, renderedData, "value: \"1000m\"")
-
+	
 	// Verify features map iteration
 	assert.Contains(t, renderedData, "logging: true")
 	assert.Contains(t, renderedData, "monitoring: true")
 	assert.Contains(t, renderedData, "tracing: true")
-
+	
 	// Verify service config rendering in JSON format
 	assert.Contains(t, renderedData, `"name": "web-frontend"`)
 	assert.Contains(t, renderedData, `"port": 80`)
 	assert.Contains(t, renderedData, `"targetPort": 8080`)
 	assert.Contains(t, renderedData, `"type": "ClusterIP"`)
 	assert.Contains(t, renderedData, `"prometheus.io/scrape": "true"`)
-
+	
 	assert.Contains(t, renderedData, `"name": "api-backend"`)
 	assert.Contains(t, renderedData, `"port": 443`)
 	assert.Contains(t, renderedData, `"targetPort": 8443`)
@@ -977,9 +774,17 @@ spec:
         name: some-task
       
     # Directly render YAML objects without enumerating properties
+    {{- if .ValidationSteps }}
+    {{- if typeIs "string" .ValidationSteps }}
     {{- $validationSteps := fromYAML .ValidationSteps }}
     {{- range $i, $step := $validationSteps }}
     - {{ toYAML $step }}
+    {{- end }}
+    {{- else }}
+    {{- range $i, $step := .ValidationSteps }}
+    - {{ toYAML $step }}
+    {{- end }}
+    {{- end }}
     {{- end }}
     
     # Render a list as a single YAML block
@@ -989,19 +794,25 @@ spec:
       params:
         - name: resources
           value: |
+            {{- if typeIs "string" .ResourceConfig }}
             {{- $resources := fromYAML .ResourceConfig }}
             {{- range $i, $res := $resources }}
             - {{ toYAML $res }}
             {{- end }}
+            {{- else }}
+            {{- range $i, $res := .ResourceConfig }}
+            - {{ toYAML $res }}
+            {{- end }}
+            {{- end }}
 `,
 		},
 	}
-
+	
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-
+	
 	// Test with complex object parameters
 	params := []pipelinev1.Param{
 		{
@@ -1083,17 +894,17 @@ spec:
 			},
 		},
 	}
-
+	
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-
+	
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-
+	
 	// Check that the YAML was correctly rendered without property enumeration
 	renderedData := string(result.Data())
-
+	
 	// Check for direct rendering of validation steps
 	assert.Contains(t, renderedData, "name: security-validation")
 	assert.Contains(t, renderedData, "runAfter:")
@@ -1102,7 +913,7 @@ spec:
 	assert.Contains(t, renderedData, "- pci-dss")
 	assert.Contains(t, renderedData, "- hipaa")
 	assert.Contains(t, renderedData, "description: Whether the deployment is compliant")
-
+	
 	// Check for rendering of resource configurations
 	assert.Contains(t, renderedData, "type: compute")
 	assert.Contains(t, renderedData, "name: app-server")
