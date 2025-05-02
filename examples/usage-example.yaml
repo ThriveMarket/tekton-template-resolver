@@ -7,7 +7,7 @@ spec:
     resolver: template
     params:
       - name: repository
-        value: https://github.com/thrivemarket/template-resolver
+        value: https://github.com/thrivemarket/tekton-template-resolver
       - name: path
         value: examples/templates/simple.yaml
       - name: post-dev-steps
