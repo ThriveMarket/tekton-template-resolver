@@ -646,12 +646,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with complex structured object parameters
 	params := []pipelinev1.Param{
 		{
@@ -716,23 +716,23 @@ notifyEmail: security@example.com`,
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the template was rendered with the structured objects
 	renderedData := string(result.Data())
-	
+
 	// Check deployment config values were correctly rendered
 	assert.Contains(t, renderedData, "value: production")
 	assert.Contains(t, renderedData, "value: \"3\"")
 	assert.Contains(t, renderedData, "value: \"500m\"")
 	assert.Contains(t, renderedData, "value: \"512Mi\"")
-	
+
 	// Check security config was rendered with range over map
 	assert.Contains(t, renderedData, "name: scanType")
 	assert.Contains(t, renderedData, "value: \"vulnerability\"")
@@ -740,7 +740,7 @@ notifyEmail: security@example.com`,
 	assert.Contains(t, renderedData, "value: \"high\"")
 	assert.Contains(t, renderedData, "name: enableRemediation")
 	assert.Contains(t, renderedData, "value: \"true\"")
-	
+
 	// Check complex nested object was rendered with proper nesting
 	assert.Contains(t, renderedData, "enabled: true")
 	assert.Contains(t, renderedData, "name: main-gateway")
@@ -835,12 +835,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with lists of YAML objects
 	params := []pipelinev1.Param{
 		{
@@ -911,17 +911,17 @@ spec:
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the template was rendered with all the objects from the lists
 	renderedData := string(result.Data())
-	
+
 	// Verify environment config rendering
 	assert.Contains(t, renderedData, "name: deploy-to-development")
 	assert.Contains(t, renderedData, "value: development")
@@ -929,26 +929,26 @@ spec:
 	assert.Contains(t, renderedData, "value: app-dev")
 	assert.Contains(t, renderedData, "value: \"1\"")
 	assert.Contains(t, renderedData, "value: \"250m\"")
-	
+
 	assert.Contains(t, renderedData, "name: deploy-to-production")
 	assert.Contains(t, renderedData, "value: production")
 	assert.Contains(t, renderedData, "value: prod-cluster")
 	assert.Contains(t, renderedData, "value: app-prod")
 	assert.Contains(t, renderedData, "value: \"3\"")
 	assert.Contains(t, renderedData, "value: \"1000m\"")
-	
+
 	// Verify features map iteration
 	assert.Contains(t, renderedData, "logging: true")
 	assert.Contains(t, renderedData, "monitoring: true")
 	assert.Contains(t, renderedData, "tracing: true")
-	
+
 	// Verify service config rendering in JSON format
 	assert.Contains(t, renderedData, `"name": "web-frontend"`)
 	assert.Contains(t, renderedData, `"port": 80`)
 	assert.Contains(t, renderedData, `"targetPort": 8080`)
 	assert.Contains(t, renderedData, `"type": "ClusterIP"`)
 	assert.Contains(t, renderedData, `"prometheus.io/scrape": "true"`)
-	
+
 	assert.Contains(t, renderedData, `"name": "api-backend"`)
 	assert.Contains(t, renderedData, `"port": 443`)
 	assert.Contains(t, renderedData, `"targetPort": 8443`)
@@ -996,12 +996,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with complex object parameters
 	params := []pipelinev1.Param{
 		{
@@ -1083,17 +1083,17 @@ spec:
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the YAML was correctly rendered without property enumeration
 	renderedData := string(result.Data())
-	
+
 	// Check for direct rendering of validation steps
 	assert.Contains(t, renderedData, "name: security-validation")
 	assert.Contains(t, renderedData, "runAfter:")
@@ -1102,7 +1102,7 @@ spec:
 	assert.Contains(t, renderedData, "- pci-dss")
 	assert.Contains(t, renderedData, "- hipaa")
 	assert.Contains(t, renderedData, "description: Whether the deployment is compliant")
-	
+
 	// Check for rendering of resource configurations
 	assert.Contains(t, renderedData, "type: compute")
 	assert.Contains(t, renderedData, "name: app-server")

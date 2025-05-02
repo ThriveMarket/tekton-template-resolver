@@ -34,7 +34,7 @@ const (
 	EnvResolutionTimeout = "RESOLUTION_TIMEOUT"
 	EnvGitCloneDepth     = "GIT_CLONE_DEPTH"
 	EnvGitBranch         = "GIT_DEFAULT_BRANCH"
-	
+
 	// Default values
 	DefaultHTTPTimeout       = 30 * time.Second
 	DefaultResolutionTimeout = 60 * time.Second
@@ -44,11 +44,11 @@ const (
 
 // Global config flags
 var (
-	debugMode bool
-	httpTimeout time.Duration
+	debugMode         bool
+	httpTimeout       time.Duration
 	resolutionTimeout time.Duration
-	gitCloneDepth int
-	gitDefaultBranch string
+	gitCloneDepth     int
+	gitDefaultBranch  string
 )
 
 // debugf prints debug messages only when debug mode is enabled
@@ -93,7 +93,7 @@ func main() {
 	// This allows us to handle flags differently in each mode
 	isStandalone := false
 	standalonePort := 8080
-	
+
 	// Pre-scan args for standalone flag without using the flag package
 	for i, arg := range os.Args {
 		if arg == "-standalone" || arg == "--standalone" {
@@ -106,32 +106,32 @@ func main() {
 			debugMode = true
 		}
 	}
-	
+
 	// Check environment variable for debug mode
 	if debugEnv := getEnvWithDefault(EnvDebug, ""); debugEnv == "true" || debugEnv == "1" {
 		debugMode = true
 	}
-	
+
 	// Load configuration from environment variables
 	httpTimeout = getEnvWithDefaultDuration(EnvHTTPTimeout, DefaultHTTPTimeout)
 	resolutionTimeout = getEnvWithDefaultDuration(EnvResolutionTimeout, DefaultResolutionTimeout)
 	gitCloneDepth = getEnvWithDefaultInt(EnvGitCloneDepth, DefaultGitCloneDepth)
 	gitDefaultBranch = getEnvWithDefault(EnvGitBranch, DefaultGitBranch)
-	
+
 	if debugMode {
 		log.Println("Debug mode enabled")
 		log.Printf("Configuration: HTTP Timeout=%v, Resolution Timeout=%v, Git Clone Depth=%d, Git Default Branch=%s",
 			httpTimeout, resolutionTimeout, gitCloneDepth, gitDefaultBranch)
 	}
-	
+
 	// Create a new resolver instance
 	resolver := NewResolver()
-	
+
 	// Initialize the resolver
 	if err := resolver.Initialize(context.Background()); err != nil {
 		log.Fatalf("Failed to initialize resolver: %v", err)
 	}
-	
+
 	// Choose between standalone mode and Knative mode
 	if isStandalone {
 		// In standalone mode, explicitly parse our own flags
@@ -142,7 +142,7 @@ func main() {
 		if err := fs.Parse(os.Args[1:]); err != nil {
 			log.Fatalf("Error parsing flags: %v", err)
 		}
-		
+
 		runStandalone(resolver, standalonePort)
 	} else {
 		// In Knative mode, let Knative handle all flag parsing
@@ -157,41 +157,41 @@ func main() {
 // without requiring the Knative/Tekton infrastructure
 func runStandalone(resolver *resolver, port int) {
 	log.Printf("Starting standalone server on port %d", port)
-	
+
 	http.HandleFunc("/resolve", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		
+
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to read request body: %v", err), http.StatusBadRequest)
 			return
 		}
-		
+
 		var request struct {
 			Parameters []pipelinev1.Param `json:"parameters"`
 		}
-		
+
 		if err := json.Unmarshal(body, &request); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to parse request: %v", err), http.StatusBadRequest)
 			return
 		}
-		
+
 		// Validate parameters
 		if err := resolver.ValidateParams(r.Context(), request.Parameters); err != nil {
 			http.Error(w, fmt.Sprintf("Invalid parameters: %v", err), http.StatusBadRequest)
 			return
 		}
-		
+
 		// Resolve the template
 		result, err := resolver.Resolve(r.Context(), request.Parameters)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to resolve template: %v", err), http.StatusInternalServerError)
 			return
 		}
-		
+
 		// Return the resolved template
 		w.Header().Set("Content-Type", "application/yaml")
 		w.WriteHeader(http.StatusOK)
@@ -199,7 +199,7 @@ func runStandalone(resolver *resolver, port int) {
 			log.Printf("Error writing response: %v", err)
 		}
 	})
-	
+
 	// Add a health check endpoint
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -207,7 +207,7 @@ func runStandalone(resolver *resolver, port int) {
 			log.Printf("Error writing health response: %v", err)
 		}
 	})
-	
+
 	// Add a readiness endpoint
 	http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -215,7 +215,7 @@ func runStandalone(resolver *resolver, port int) {
 			log.Printf("Error writing readiness response: %v", err)
 		}
 	})
-	
+
 	// Start the server
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
@@ -231,7 +231,7 @@ type TemplateFetcher interface {
 type gitTemplateFetcher struct{}
 
 // resolver is the main implementation of the Tekton resolver
-type resolver struct{
+type resolver struct {
 	fetcher TemplateFetcher
 }
 
@@ -288,13 +288,13 @@ func (r *resolver) ValidateParams(ctx context.Context, params []pipelinev1.Param
 // Resolve fetches the template from Git, applies parameters, and returns the rendered template.
 func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (framework.ResolvedResource, error) {
 	debugf("Resolve called with %d params", len(params))
-	
+
 	// Extract required parameters
 	var repository, path string
-	
+
 	// Dynamic parameter map to pass to template
 	templateData := make(map[string]interface{})
-	
+
 	// First, extract required parameters
 	for _, param := range params {
 		switch param.Name {
@@ -308,7 +308,7 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 			templateData[PathParam] = path
 		}
 	}
-	
+
 	// Fetch template from Git repository
 	templateContent, err := r.fetcher.FetchTemplate(repository, path)
 	if err != nil {
@@ -318,26 +318,26 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 	// Process all parameters including the required ones we already set
 	for _, param := range params {
 		debugf("Processing param: %s (type: %s)", param.Name, param.Value.Type)
-		
+
 		// Convert parameter name to camel case for template
 		camelName := toCamelCase(param.Name)
-		
+
 		// Skip parameters we've already set (repository and path)
 		// and skip if we've already processed this parameter name
-		if (param.Name == RepositoryParam || param.Name == PathParam) {
+		if param.Name == RepositoryParam || param.Name == PathParam {
 			continue
 		}
-		
+
 		// Also skip if we've already set this parameter name through another parameter
 		if _, exists := templateData[camelName]; exists {
 			continue
 		}
-		
+
 		// Process based on parameter type
 		switch param.Value.Type {
 		case pipelinev1.ParamTypeArray:
 			debugf("Processing array parameter %s", param.Name)
-			
+
 			// Try to parse each array element as a task definition
 			var tasks []map[string]interface{}
 			for i, arrayItem := range param.Value.ArrayVal {
@@ -346,13 +346,13 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 					log.Printf("WARNING: Failed to parse %s array item %d as YAML: %v", param.Name, i, err)
 					continue
 				}
-				
+
 				// Check if this looks like a task (has a "name" field)
 				if _, hasName := task["name"]; hasName {
 					tasks = append(tasks, task)
 				}
 			}
-			
+
 			// If we found tasks, extract names and format them
 			if len(tasks) > 0 {
 				// Format tasks for YAML inclusion
@@ -367,7 +367,7 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 						// Add formatted tasks to template data
 						debugf("Adding tasks as %s", camelName)
 						templateData[camelName] = formattedTasks
-						
+
 						// Extract task names
 						var taskNames []string
 						for _, task := range tasks {
@@ -375,13 +375,13 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 								taskNames = append(taskNames, name)
 							}
 						}
-						
+
 						// Add task names to template data
 						if len(taskNames) > 0 {
 							namesParam := camelName + "Names"
 							debugf("Adding task names as %s", namesParam)
 							templateData[namesParam] = taskNames
-							
+
 							// Add last task name for convenience
 							lastNameParam := camelName + "Name"
 							lastTaskName := taskNames[len(taskNames)-1]
@@ -394,11 +394,11 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 				// Just a regular array parameter
 				templateData[camelName] = param.Value.ArrayVal
 			}
-			
+
 		case pipelinev1.ParamTypeObject:
 			// Pass through object parameters
 			templateData[camelName] = param.Value.ObjectVal
-			
+
 		default: // String or other type
 			// Try to parse string as YAML tasks if it looks like YAML
 			if param.Value.Type == pipelinev1.ParamTypeString && strings.Contains(param.Value.StringVal, "name:") {
@@ -423,7 +423,7 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 								// Add formatted tasks to template data
 								debugf("Adding string tasks as %s", camelName)
 								templateData[camelName] = formattedTasks
-								
+
 								// Extract task names
 								var taskNames []string
 								for _, task := range tasks {
@@ -431,13 +431,13 @@ func (r *resolver) Resolve(ctx context.Context, params []pipelinev1.Param) (fram
 										taskNames = append(taskNames, name)
 									}
 								}
-								
+
 								// Add task names to template data
 								if len(taskNames) > 0 {
 									namesParam := camelName + "Names"
 									debugf("Adding task names as %s", namesParam)
 									templateData[namesParam] = taskNames
-									
+
 									// Add last task name for convenience
 									lastNameParam := camelName + "Name"
 									lastTaskName := taskNames[len(taskNames)-1]
@@ -750,7 +750,7 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			if strings.TrimSpace(yamlStr) == "" {
 				return nil
 			}
-			
+
 			// Parse the YAML string into a structured object
 			var result interface{}
 			err := yaml.Unmarshal([]byte(yamlStr), &result)
@@ -761,7 +761,7 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 					"error": fmt.Sprintf("Error parsing YAML: %v", err),
 				}
 			}
-			
+
 			debugf("Successfully parsed YAML with fromYAML function: %v", result)
 			return result
 		},
@@ -782,16 +782,16 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			if obj == nil {
 				return false
 			}
-			
+
 			// Get all keys from the map
 			keys := make([]string, 0, len(obj))
 			for k := range obj {
 				keys = append(keys, k)
 			}
-			
+
 			// Sort keys to ensure consistent order
 			sort.Strings(keys)
-			
+
 			// Check if the given key is the last one
 			return keys[len(keys)-1] == key
 		},
@@ -800,28 +800,28 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			if obj == nil {
 				return ""
 			}
-			
+
 			// Marshal the object to YAML
 			yamlBytes, err := yaml.Marshal(obj)
 			if err != nil {
 				debugf("Error converting object to YAML with toYAML function: %v", err)
 				return fmt.Sprintf("Error: %v", err)
 			}
-			
+
 			// Convert to string and clean up
 			yamlStr := string(yamlBytes)
-			
+
 			// Remove the document separator and ensure proper indentation
 			yamlStr = strings.TrimPrefix(yamlStr, "---\n")
-			
+
 			// Remove the leading dash for items in a list (will be added by the template)
 			if strings.HasPrefix(yamlStr, "- ") {
 				yamlStr = yamlStr[2:]
 			}
-			
+
 			// Trim trailing newline
 			yamlStr = strings.TrimSpace(yamlStr)
-			
+
 			debugf("toYAML function result: %s", yamlStr)
 			return yamlStr
 		},
@@ -899,4 +899,3 @@ func toCamelCase(paramName string) string {
 	}
 	return strings.Join(parts, "")
 }
-
