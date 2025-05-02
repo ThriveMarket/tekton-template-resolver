@@ -954,3 +954,161 @@ spec:
 	assert.Contains(t, renderedData, `"targetPort": 8443`)
 	assert.Contains(t, renderedData, `"service.beta.kubernetes.io/aws-load-balancer-backend-protocol": "https"`)
 }
+
+// TestDirectYAMLObjectRendering tests the ability to directly render YAML objects
+// without having to manually enumerate all properties
+func TestDirectYAMLObjectRendering(t *testing.T) {
+	// Create a mock fetcher with a template that directly renders YAML objects
+	mockData := &mockFetcher{
+		templates: map[string]string{
+			"repo1:path1": `
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: direct-yaml-rendering-pipeline
+spec:
+  params:
+    - name: app-name
+      type: string
+  tasks:
+    # Base task
+    - name: base-task
+      taskRef:
+        name: some-task
+      
+    # Directly render YAML objects without enumerating properties
+    {{- $validationSteps := fromYAML .ValidationSteps }}
+    {{- range $i, $step := $validationSteps }}
+    - {{ toYAML $step }}
+    {{- end }}
+    
+    # Render a list as a single YAML block
+    - name: infrastructure
+      taskRef:
+        name: infrastructure-manager
+      params:
+        - name: resources
+          value: |
+            {{- $resources := fromYAML .ResourceConfig }}
+            {{- range $i, $res := $resources }}
+            - {{ toYAML $res }}
+            {{- end }}
+`,
+		},
+	}
+	
+	// Create resolver with mock fetcher
+	r := &resolver{
+		fetcher: mockData,
+	}
+	
+	// Test with complex object parameters
+	params := []pipelinev1.Param{
+		{
+			Name: "repository",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "repo1",
+			},
+		},
+		{
+			Name: "path",
+			Value: pipelinev1.ParamValue{
+				Type:      "string",
+				StringVal: "path1",
+			},
+		},
+		// Validation steps with complex nested structure
+		{
+			Name: "validation-steps",
+			Value: pipelinev1.ParamValue{
+				Type: "string",
+				StringVal: `- name: security-validation
+  taskRef:
+    name: security-validator
+  runAfter:
+    - previous-step
+  params:
+    - name: scan-level
+      value: deep
+    - name: timeout
+      value: 30m
+  workspaces:
+    - name: source
+      workspace: shared-workspace
+- name: compliance-validation
+  taskRef:
+    name: compliance-validator
+  params:
+    - name: standards
+      value:
+        - pci-dss
+        - hipaa
+        - gdpr
+  results:
+    - name: compliant
+      description: Whether the deployment is compliant
+    - name: report
+      description: Compliance report URL`,
+			},
+		},
+		// Resource configurations with nested structures
+		{
+			Name: "resource-config",
+			Value: pipelinev1.ParamValue{
+				Type: "string",
+				StringVal: `- type: compute
+  name: app-server
+  size: large
+  replicas: 3
+  storage:
+    size: 100Gi
+    type: ssd
+  network:
+    ingress:
+      enabled: true
+      port: 443
+- type: database
+  name: app-db
+  engine: postgres
+  version: "13.4"
+  storage:
+    size: 500Gi
+    type: ssd
+    backup:
+      enabled: true
+      retention: 7d
+  credentials:
+    secretRef: db-creds`,
+			},
+		},
+	}
+	
+	// Execute the Resolve function
+	result, err := r.Resolve(context.Background(), params)
+	
+	// Verify results
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	
+	// Check that the YAML was correctly rendered without property enumeration
+	renderedData := string(result.Data())
+	
+	// Check for direct rendering of validation steps
+	assert.Contains(t, renderedData, "name: security-validation")
+	assert.Contains(t, renderedData, "runAfter:")
+	assert.Contains(t, renderedData, "- previous-step")
+	assert.Contains(t, renderedData, "name: compliance-validation")
+	assert.Contains(t, renderedData, "- pci-dss")
+	assert.Contains(t, renderedData, "- hipaa")
+	assert.Contains(t, renderedData, "description: Whether the deployment is compliant")
+	
+	// Check for rendering of resource configurations
+	assert.Contains(t, renderedData, "type: compute")
+	assert.Contains(t, renderedData, "name: app-server")
+	assert.Contains(t, renderedData, "size: 100Gi")
+	assert.Contains(t, renderedData, "type: database")
+	assert.Contains(t, renderedData, "engine: postgres")
+	assert.Contains(t, renderedData, "retention: 7d")
+	assert.Contains(t, renderedData, "secretRef: db-creds")
+}

@@ -795,6 +795,36 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			// Check if the given key is the last one
 			return keys[len(keys)-1] == key
 		},
+		"toYAML": func(obj interface{}) string {
+			// Convert an object back to a YAML string for template inclusion
+			if obj == nil {
+				return ""
+			}
+			
+			// Marshal the object to YAML
+			yamlBytes, err := yaml.Marshal(obj)
+			if err != nil {
+				debugf("Error converting object to YAML with toYAML function: %v", err)
+				return fmt.Sprintf("Error: %v", err)
+			}
+			
+			// Convert to string and clean up
+			yamlStr := string(yamlBytes)
+			
+			// Remove the document separator and ensure proper indentation
+			yamlStr = strings.TrimPrefix(yamlStr, "---\n")
+			
+			// Remove the leading dash for items in a list (will be added by the template)
+			if strings.HasPrefix(yamlStr, "- ") {
+				yamlStr = yamlStr[2:]
+			}
+			
+			// Trim trailing newline
+			yamlStr = strings.TrimSpace(yamlStr)
+			
+			debugf("toYAML function result: %s", yamlStr)
+			return yamlStr
+		},
 	}
 
 	debugf("Template content before parsing:\n%s", templateContent)
