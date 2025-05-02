@@ -28,11 +28,11 @@ spec:
     {{- if typeIs "string" .PostDevSteps }}
     {{- $steps := fromYAML .PostDevSteps }}
     {{- range $i, $step := $steps }}
-    - {{ toYAML $step }}
+    - {{ toYAML $step | indent 2 }}
     {{- end }}
     {{- else }}
     {{- range $i, $step := .PostDevSteps }}
-    - {{ toYAML $step }}
+    - {{ toYAML $step | indent 2 }}
     {{- end }}
     {{- end }}
     {{- else}}
@@ -73,11 +73,11 @@ spec:
     {{- if typeIs "string" .PostProdSteps }}
     {{- $steps := fromYAML .PostProdSteps }}
     {{- range $i, $step := $steps }}
-    - {{ toYAML $step }}
+    - {{ toYAML $step | indent 2 }}
     {{- end }}
     {{- else }}
     {{- range $i, $step := .PostProdSteps }}
-    - {{ toYAML $step }}
+    - {{ toYAML $step | indent 2 }}
     {{- end }}
     {{- end }}
     {{- else}}
