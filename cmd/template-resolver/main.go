@@ -815,9 +815,7 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			yamlStr = strings.TrimPrefix(yamlStr, "---\n")
 
 			// Remove the leading dash for items in a list (will be added by the template)
-			if strings.HasPrefix(yamlStr, "- ") {
-				yamlStr = yamlStr[2:]
-			}
+			yamlStr = strings.TrimPrefix(yamlStr, "- ")
 
 			// Trim trailing newline
 			yamlStr = strings.TrimSpace(yamlStr)
