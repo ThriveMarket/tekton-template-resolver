@@ -22,6 +22,8 @@ tasks:
     desc: Run all tests
     cmds:
       - go test ./...
+    sources:
+      - '**/*.go'
 
   test:coverage:
     desc: Run tests with coverage report
@@ -140,7 +142,7 @@ tasks:
           echo "Error: Cannot connect to Kubernetes cluster. Please check your kubeconfig."
           exit 1
         fi
-        
+
         # Check which version of Tekton is recommended
         echo "Installing Tekton Pipelines..."
         kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml

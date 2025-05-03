@@ -137,6 +137,9 @@ func renderTemplate(templateContent string, data map[string]interface{}) (string
 			debugf("Successfully parsed YAML with fromYAML function: %v", result)
 			return result
 		},
+		"trimLeading": func(v string) string {
+			return strings.TrimLeft(v, " \t")
+		},
 		"indent": func(spaces int, v string) string {
 			padding := strings.Repeat(" ", spaces)
 			lines := strings.Split(v, "\n")
