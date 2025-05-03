@@ -70,7 +70,16 @@ spec:
     # Post-prod deployment tasks
     {{- if .PostProdSteps}}
     # User-defined post-prod steps
-{{.PostProdSteps}}
+    {{- if typeIs "string" .PostProdSteps }}
+    {{- $steps := fromYAML .PostProdSteps }}
+    {{- range $i, $step := $steps }}
+    - {{ toYAML $step | indent 2 }}
+    {{- end }}
+    {{- else }}
+    {{- range $i, $step := .PostProdSteps }}
+    - {{ toYAML $step | indent 2 }}
+    {{- end }}
+    {{- end }}
     {{- else}}
     # Default post-prod step
     - name: default-prod-validation

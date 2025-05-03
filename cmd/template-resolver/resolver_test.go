@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"testing"
-	
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -44,12 +44,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with basic parameters
 	params := []pipelinev1.Param{
 		{
@@ -74,14 +74,14 @@ spec:
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the template was rendered
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "name: test-pipeline")
@@ -114,12 +114,12 @@ spec:
 `,
 		},
 	}
-	
+
 	// Create resolver with mock fetcher
 	r := &resolver{
 		fetcher: mockData,
 	}
-	
+
 	// Test with a regular array parameter
 	params := []pipelinev1.Param{
 		{
@@ -144,14 +144,14 @@ spec:
 			},
 		},
 	}
-	
+
 	// Execute the Resolve function
 	result, err := r.Resolve(context.Background(), params)
-	
+
 	// Verify results
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	// Check that the template was rendered with the array values
 	renderedData := string(result.Data())
 	assert.Contains(t, renderedData, "- dev")
