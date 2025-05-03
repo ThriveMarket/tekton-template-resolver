@@ -25,7 +25,16 @@ spec:
     # Post-dev deployment tasks
     {{- if .PostDevSteps}}
     # User-defined post-dev steps
-{{.PostDevSteps}}
+    {{- if typeIs "string" .PostDevSteps }}
+    {{- $steps := fromYAML .PostDevSteps }}
+    {{- range $i, $step := $steps }}
+    - {{ toYAML $step | indent 4 }}
+    {{- end }}
+    {{- else }}
+    {{- range $i, $step := .PostDevSteps }}
+    - {{ toYAML $step | indent 4 }}
+    {{- end }}
+    {{- end }}
     {{- else}}
     # Default post-dev step
     - name: default-dev-validation
