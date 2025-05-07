@@ -1,6 +1,6 @@
 # Tekton Template Resolver
 
-[![CI/CD Pipeline](https://github.com/thrivemarket/template-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/thrivemarket/template-resolver/actions/workflows/ci.yml)
+[![CI/CD Pipeline](https://github.com/thrivemarket/tekton-template-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/thrivemarket/tekton-template-resolver/actions/workflows/ci.yml)
 
 ## Overview
 
