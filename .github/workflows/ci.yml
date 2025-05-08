@@ -46,14 +46,18 @@ jobs:
       
       - name: Set output based on changes or manual trigger
         id: set-output
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE_FULL_BUILD: ${{ github.event.inputs.force_full_build }}
+          GO_CHANGED: ${{ steps.filter.outputs.go }}
         run: |
           # Set to true if workflow was manually triggered with force_full_build
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.force_full_build }}" == "true" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$FORCE_FULL_BUILD" == "true" ]]; then
             echo "Force full build requested via manual trigger"
             echo "go-changed=true" >> $GITHUB_OUTPUT
           else
             # Use the result from the paths-filter
-            echo "go-changed=${{ steps.filter.outputs.go }}" >> $GITHUB_OUTPUT
+            echo "go-changed=$GO_CHANGED" >> $GITHUB_OUTPUT
           fi
           
       - name: Show change status
